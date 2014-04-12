@@ -63,27 +63,77 @@ volatile struct sunxi_timer_reg *r;
 
 void deactivate_watchdog(int signum)
 {
-    printf("\nDeactivating the watchdog.\n");
     r->wdog_mode_reg = 0;
     exit(0);
 }
 
-int main(int argc, char **argv)
+static void simple_watchdog(void)
 {
-    r  = (volatile struct sunxi_timer_reg *) map_physical_memory(TIMER_BASE, 4096);
-
     signal(SIGINT, deactivate_watchdog);
     signal(SIGTERM, deactivate_watchdog);
 
-    printf("Activating the watchdog.\n");
     r->wdog_mode_reg = (5 << 3) | 3;
 
-    while (1) {
+    while (1)
+    {
         sleep(1);
         r->wdog_ctrl_reg = (0x0a57 << 1) | 1;
     }
+}
 
-    munmap((void *)r, 4096);
-    close(mem_fd);
+static void deadloop()
+{
+    while (1) {}
+}
+
+int main(int argc, char **argv)
+{
+    int pid, status, w;
+    r  = (volatile struct sunxi_timer_reg *) map_physical_memory(TIMER_BASE, 4096);
+
+    if (argc < 2)
+    {
+        printf("Usage: a10-watchdog [program] <arg1> <arg2> ... <argN>\n");
+        printf("\n");
+        printf("This executes the specified program and keeps kicking\n");
+        printf("the Allwinner A10 hardware watchdog while the program is\n");
+        printf("still running. If the program fails for any reason (segfaults\n");
+        printf("or returns nonzero exit code) or the processor deadlocks,\n");
+        printf("then the hardware watchdog activates and reboots the system.\n");
+        printf("\n");
+        printf("Right now just waiting for a hardware related failure.\n");
+        printf("Press Ctrl-C to exit.\n");
+        simple_watchdog();
+    }
+
+    r->wdog_mode_reg = (5 << 3) | 3;
+
+    if ((pid = fork()) == 0)
+    {
+        execv(argv[1], &argv[1]);
+        exit(1);
+    }
+    else
+    {
+        while (1)
+        {
+            if ((w = waitpid(pid, &status, WNOHANG)) != 0)
+            {
+                if (w == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0)
+                {
+                    r->wdog_mode_reg = 0;
+                    exit(0);
+                }
+                else
+                {
+                    deadloop();
+                }
+            }
+
+            sleep(1);
+            r->wdog_ctrl_reg = (0x0a57 << 1) | 1;
+        }
+    }
+
     return 0;
 }
