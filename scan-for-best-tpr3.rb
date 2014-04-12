@@ -98,10 +98,17 @@ def log_progress(log_name, message)
     sleep(1)
 end
 
-def run_test(tpr3_log_name, tpr3)
+def read_file(filename)
+    fh = File.open(filename)
+    data = fh.read
+    fh.close
+    return data
+end
+
+def run_test(tpr3_log_name, tpr3, suffix)
 
     log_progress(tpr3_log_name,
-        "before configuring tpr3")
+        "before configuring tpr3" + suffix)
 
     if not `a10-set-tpr3 #{sprintf("0x%08X", tpr3)}` =~ /Done/ then
         log_progress("executing a10-set-tpr3 failed")
@@ -134,6 +141,10 @@ end
 tpr3_gen.each {|tpr3|
     tpr3_log_file = File.join($subtest_directory, sprintf("tpr3_0x%08X", tpr3))
     if not File.exists?(tpr3_log_file) then
-        run_test(tpr3_log_file, tpr3)
+        run_test(tpr3_log_file, tpr3, ", try1")
+    elsif read_file(tpr3_log_file) == "before configuring tpr3, try1" then
+        run_test(tpr3_log_file, tpr3, ", try2")
+    elsif read_file(tpr3_log_file) == "before configuring tpr3, try2" then
+        run_test(tpr3_log_file, tpr3, ", try3")
     end
 }
