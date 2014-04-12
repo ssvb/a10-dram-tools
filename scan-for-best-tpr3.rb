@@ -107,6 +107,11 @@ end
 
 def run_test(tpr3_log_name, tpr3, suffix)
 
+    # Keep a notice about the current tpr3 check progress
+    fh = File.open(File.join($subtest_directory, "_current_work.txt"), "w")
+    fh.write(File.basename(tpr3_log_name))
+    fh.close
+
     log_progress(tpr3_log_name,
         "before configuring tpr3" + suffix)
 
@@ -148,3 +153,8 @@ tpr3_gen.each {|tpr3|
         run_test(tpr3_log_file, tpr3, ", try3")
     end
 }
+
+# We are done with all the work
+if File.exists?(File.join($subtest_directory, "_current_work.txt")) then
+    File.delete(File.join($subtest_directory, "_current_work.txt"))
+end
