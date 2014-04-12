@@ -79,9 +79,6 @@ fh = File.open(File.join($subtest_directory, "_a10_meminfo.txt"), "w")
 fh.write(a10_meminfo_log)
 fh.close()
 
-# Start a watchdog process
-Process.detach(fork { exec "a10-watchdog > /dev/null" })
-
 # Now pick a previously untested tpr3 configuration
 
 tpr3_gen = Generator.new {|tpr3_gen|
@@ -130,7 +127,8 @@ def run_test(tpr3_log_name, tpr3)
         sprintf("FINISHED, memtester success rate: %d/%d",
                 memtester_ok_count, memtester_total_count))
 
-    `reboot`
+    # The system will be rebooted by the a10-watchdog
+    exit(1)
 end
 
 tpr3_gen.each {|tpr3|
