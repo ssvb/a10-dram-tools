@@ -32,13 +32,16 @@ tools_are_available = false if $?.to_i != 0
 tools_are_available = false if $?.to_i != 0
 
 if not ARGV[0] or not File.directory?(ARGV[0]) or not tools_are_available then
-    printf("Usage: #{$PROGRAM_NAME}dramtest.rb [working_directory]\n")
+    printf("Usage: #{$PROGRAM_NAME}dramtest.rb [working_directory] <text_description>\n")
     printf("\n")
     printf("If you set this script to run by default after the system startup,\n")
     printf("then it is going to probe various settings of 'dram_tpr3' and test\n")
     printf("their stability with a lima-memtester tool. The final results are\n")
     printf("represented as subdirectories with files in the directory\n")
-    printf("tree inside of 'working_directory'.\n")
+    printf("tree inside of 'working_directory'. The optional 'text_description'\n")
+    printf("argument may be specified to provide a text description for this\n")
+    printf("configuration. This description will be used in the nice html tables\n")
+    printf("created by 'parse-tpr3-results.rb'.\n")
     printf("\n")
     printf("Note: expect a lot of reboots during this process!\n")
     printf("\n")
@@ -141,6 +144,14 @@ def run_test(tpr3_log_name, tpr3, suffix)
 
     # The system will be rebooted by the a10-watchdog
     exit(1)
+end
+
+# The second optional command line argument is a description text
+description_filename = File.join($subtest_directory, "_description.txt")
+if ARGV[1] and not File.exists?(description_filename) then
+    fh = File.open(description_filename, "w")
+    fh.write(ARGV[1])
+    fh.close
 end
 
 tpr3_gen.each {|tpr3|
