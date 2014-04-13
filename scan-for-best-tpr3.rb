@@ -19,12 +19,15 @@
 require 'zlib'
 require 'generator'
 
+# No more than 10 minutes would be ever needed
+$watchdog_max_timeout = 10 * 60
+
 # Check if we have all the tools and are provided with a proper working directory
 
 tools_are_available = true
 `which a10-meminfo > /dev/null 2>&1`
 tools_are_available = false if $?.to_i != 0
-`which a10-watchdog > /dev/null 2>&1`
+`which a10-stdin-watchdog > /dev/null 2>&1`
 tools_are_available = false if $?.to_i != 0
 `which a10-set-tpr3 > /dev/null 2>&1`
 tools_are_available = false if $?.to_i != 0
@@ -48,7 +51,7 @@ if not ARGV[0] or not File.directory?(ARGV[0]) or not tools_are_available then
     printf("This script needs to be run as root, and also it needs\n")
     printf("a few tools to be installed:\n")
     printf("   a10-meminfo\n")
-    printf("   a10-watchdog\n")
+    printf("   a10-stdin-watchdog\n")
     printf("   a10-set-tpr3\n")
     printf("   lima-memtester\n")
     if not tools_are_available then
@@ -81,6 +84,21 @@ Dir.mkdir($subtest_directory) if not File.directory?($subtest_directory)
 fh = File.open(File.join($subtest_directory, "_a10_meminfo.txt"), "w")
 fh.write(a10_meminfo_log)
 fh.close()
+
+# Setup the hardware watchdog and provide some functions to control it
+
+$watchdog = IO.popen(sprintf("a10-stdin-watchdog %d", $watchdog_max_timeout), "w")
+
+def reset_watchdog_timeout(new_timeout)
+    if new_timeout > $watchdog_max_timeout then
+        raise "Bad watchdog timeout"
+    end
+    $watchdog.printf("%d\n", new_timeout)
+end
+
+def disable_watchdog()
+    $watchdog.printf("-1\n")
+end
 
 # Now pick a previously untested tpr3 configuration
 
@@ -115,6 +133,9 @@ def run_test(tpr3_log_name, tpr3, suffix)
     fh.write(File.basename(tpr3_log_name))
     fh.close
 
+    # 15 seconds to setup tpr3 should be enough
+    reset_watchdog_timeout(15) 
+
     log_progress(tpr3_log_name,
         "before configuring tpr3" + suffix)
 
@@ -130,6 +151,8 @@ def run_test(tpr3_log_name, tpr3, suffix)
     memtester_total_count = 0
 
     1.upto(5) {
+        # 5 minutes per individual lima-memtester run should be enough
+        reset_watchdog_timeout(5 * 60) 
         `lima-memtester 8M 1`
         memtester_ok_count += 1 if $?.to_i == 0
         memtester_total_count += 1
@@ -142,8 +165,9 @@ def run_test(tpr3_log_name, tpr3, suffix)
         sprintf("FINISHED, memtester success rate: %d/%d",
                 memtester_ok_count, memtester_total_count))
 
-    # The system will be rebooted by the a10-watchdog
-    exit(1)
+    # The system will be rebooted by the a10-stdin-watchdog
+    reset_watchdog_timeout(0)
+    while true do end
 end
 
 # The second optional command line argument is a description text
@@ -164,6 +188,8 @@ tpr3_gen.each {|tpr3|
         run_test(tpr3_log_file, tpr3, ", try3")
     end
 }
+
+disable_watchdog()
 
 # We are done with all the work
 if File.exists?(File.join($subtest_directory, "_current_work.txt")) then
