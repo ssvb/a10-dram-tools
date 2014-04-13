@@ -68,6 +68,24 @@ pthread_mutex_t watchdog_mutex = PTHREAD_MUTEX_INITIALIZER;
 volatile int watchdog_timeout_upper_limit;
 volatile int watchdog_timeout_counter;
 
+static void deadloop(void)
+{
+    while (1) {}
+}
+
+#define BUFSIZE (1024 * 1024)
+
+static void simple_memtester(int x)
+{
+    static char buffer1[BUFSIZE];
+    static char buffer2[BUFSIZE];
+
+    memset(buffer1, (x ^ 0x5A) & 0xFF, BUFSIZE);
+    memcpy(buffer2, buffer1, BUFSIZE);
+    if (memcmp(buffer2, buffer1, BUFSIZE) != 0)
+        deadloop();
+}
+
 static void *watchdog_thread_function(void *ctx)
 {
     r  = (volatile struct sunxi_timer_reg *) map_physical_memory(TIMER_BASE, 4096);
@@ -88,10 +106,12 @@ static void *watchdog_thread_function(void *ctx)
         {
             /* The timer has elapsed, we are dead */
             printf("Boom!\n");
-            while (1) {}
+            deadloop();
         }
         watchdog_timeout_counter--;
         pthread_mutex_unlock(&watchdog_mutex);
+
+        simple_memtester(watchdog_timeout_counter);
 
         sleep(1);
         r->wdog_ctrl_reg = (0x0a57 << 1) | 1;
