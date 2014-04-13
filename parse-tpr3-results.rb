@@ -121,9 +121,25 @@ Dir.glob(File.join(ARGV[0], "*")).each {|f|
     next if not File.directory?(f)
     dirlist.push(f)
 }
+
+# Combine the results from the same device/configuration
+tmp = {}
 dirlist.sort.each {|f|
-    printf("<p>\n")
-    subtest_dir_to_html_table(f)
+    if File.basename(f) =~ /(\d+MHz\-[0-9A-F]{8})/ then
+        tmp[$1] = [] if not tmp.has_key?($1)
+        tmp[$1].push(f)
+    end
+}
+dirlist = []
+tmp.to_a.sort {|x,y| x[0] <=> y[0] }.each {|x| dirlist.push(x[1]) }
+
+dirlist.each {|a|
+    printf("<table cellspacing=10><tr>\n")
+    a.each {|f|
+        printf("<td>")
+        subtest_dir_to_html_table(f)
+    }
+    printf("</table>")
     printf("</p>\n")
 }
 
