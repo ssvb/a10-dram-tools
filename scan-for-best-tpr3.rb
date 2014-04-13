@@ -24,6 +24,16 @@ $watchdog_max_timeout = 10 * 60
 
 # Check if we have all the tools and are provided with a proper working directory
 
+def tool_exists(tool_name)
+    `which #{tool_name} > /dev/null 2>&1`
+    if $?.to_i != 0 then
+        printf("Error: the required '%s' executable is not found in PATH\n", tool_name)
+        return false
+    else
+        return true
+    end
+end
+
 tools_are_available = true
 `which a10-meminfo > /dev/null 2>&1`
 tools_are_available = false if $?.to_i != 0
@@ -34,31 +44,43 @@ tools_are_available = false if $?.to_i != 0
 `which lima-memtester > /dev/null 2>&1`
 tools_are_available = false if $?.to_i != 0
 
-if not ARGV[0] or not File.directory?(ARGV[0]) or not tools_are_available then
-    printf("Usage: #{$PROGRAM_NAME}dramtest.rb [working_directory] <text_description>\n")
+if not ARGV[0] or not File.directory?(ARGV[0]) then
+    printf("Usage: #{$PROGRAM_NAME} [working_directory] <text_description>\n")
     printf("\n")
     printf("If you set this script to run by default after the system startup,\n")
     printf("then it is going to probe various settings of 'dram_tpr3' and test\n")
-    printf("their stability with a lima-memtester tool. The final results are\n")
-    printf("represented as subdirectories with files in the directory\n")
-    printf("tree inside of 'working_directory'. The optional 'text_description'\n")
+    printf("their stability with the lima-memtester tool. The final results are\n")
+    printf("represented as subdirectories with files in the directory tree\n")
+    printf("inside of 'working_directory'. The optional 'text_description'\n")
     printf("argument may be specified to provide a text description for this\n")
-    printf("configuration. This description will be used in the nice html tables\n")
-    printf("created by 'parse-tpr3-results.rb'.\n")
+    printf("configuration. This description will be used in the nice html\n")
+    printf("tables created by the 'parse-tpr3-results.rb' script.\n")
     printf("\n")
-    printf("Note: expect a lot of reboots during this process!\n")
-    printf("\n")
-    printf("This script needs to be run as root, and also it needs\n")
-    printf("a few tools to be installed:\n")
+    printf("The #{$PROGRAM_NAME} script needs to be run as root. And it\n")
+    printf("also needs a few other helper tools to be installed:\n")
     printf("   a10-meminfo\n")
     printf("   a10-stdin-watchdog\n")
     printf("   a10-set-tpr3\n")
     printf("   lima-memtester\n")
-    if not tools_are_available then
-        printf("\nSome of the required tools are not found! Please fix this.\n")
-    end
+    printf("\n")
+    printf("Note: expect a lot of reboots during the whole process!\n")
     exit(1)
 end
+
+if not tool_exists("a10-meminfo") or
+   not tool_exists("a10-stdin-watchdog") or
+   not tool_exists("a10-set-tpr3")
+then
+   printf("You can get it at https://github.com/ssvb/a10-meminfo/\n")
+   exit(1)
+end
+
+if not tool_exists("lima-memtester") then
+   printf("You can get it at https://github.com/ssvb/lima-memtester/\n")
+   exit(1)
+end
+
+###############################################################################
 
 $root_directory = ARGV[0]
 
