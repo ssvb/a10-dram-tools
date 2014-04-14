@@ -89,6 +89,11 @@ $root_directory = ARGV[0]
 a10_meminfo_log = `a10-meminfo`
 a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log)
 
+hardware_id = "unknown"
+if `cat /proc/cpuinfo` =~ /Hardware\s*\:\s*(sun.*?)[\s\n$]/ then
+    hardware_id = $1
+end
+
 if not a10_meminfo_log =~ /dram_clk\s*=\s*(\d+)/ then
     printf("Error: a10-meminfo is not installed\n")
     exit(1)
@@ -96,7 +101,7 @@ end
 
 dram_freq = $1
 
-$subtest_directory = File.join($root_directory, dram_freq + "MHz-" +
+$subtest_directory = File.join($root_directory, hardware_id + "-" + dram_freq + "MHz-" +
                                sprintf("%08X", a10_meminfo_log_crc32))
 
 # Ensure that a subdirectory exists for this configuration
