@@ -16,8 +16,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
+
 require 'zlib'
-require 'generator'
 
 # No more than 10 minutes would be ever needed
 $watchdog_max_timeout = 10 * 60
@@ -129,7 +130,7 @@ end
 
 # Now pick a previously untested tpr3 configuration
 
-tpr3_gen = Generator.new {|tpr3_gen|
+tpr3_gen = Enumerator::Generator.new {|tpr3_gen|
     [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
      0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38].each {|mfxdly|
         [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc].each {|sdphase|
