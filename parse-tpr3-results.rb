@@ -26,6 +26,15 @@ if not ARGV[0] or not File.directory?(ARGV[0]) then
     exit(1)
 end
 
+def read_file(dir, name)
+    fullname = File.join(dir, name)
+    return if not File.exists?(fullname)
+    fh = File.open(fullname)
+    data = fh.read
+    fh.close
+    return data
+end
+
 def subtest_dir_to_html_table(dir)
 
     mfxdly_list   = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
@@ -33,15 +42,6 @@ def subtest_dir_to_html_table(dir)
     sdphase_list  = [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc]
     sdphase_label = [90, 72, 54, 36, 108, 90, 72, 54, 126,
                      108, 90, 72, 144, 126, 108, 90]
-
-    def read_file(dir, name)
-        fullname = File.join(dir, name)
-        return if not File.exists?(fullname)
-        fh = File.open(fullname)
-        data = fh.read
-        fh.close
-        return data
-    end
 
     def lookup_tpr3(dir, tpr3)
         filename = File.join(dir, sprintf("tpr3_0x%08X", tpr3))
@@ -69,10 +69,7 @@ def subtest_dir_to_html_table(dir)
     printf("<table border=1 style='border-collapse: collapse;")
     printf(" empty-cells: show; font-family: arial; font-size: small;")
     printf(" white-space: nowrap; background: #F0F0F0;'>\n")
-    printf("<caption><b>%s (reliability for different dram_tpr3 settings)</b></caption>\n", (read_file(dir, "_description.txt") or
-                                       "Unknown device"))
-    printf("<tr><td rowspan='#{mfxdly_list.size + 1}'>%s<th>MFxDLY \\ SDPHASE",
-           read_file(dir, "_a10_meminfo.txt").gsub("\n", "<br>"))
+    printf("<tr><th>MFxDLY \\ SDPHASE")
     sdphase_list.each {|sdphase|
         printf("<th>%d", sdphase_label[sdphase])
     }
@@ -123,19 +120,38 @@ Dir.glob(File.join(ARGV[0], "*")).each {|f|
     dirlist.push(f)
 }
 
-# Combine the results from the same device/configuration
+def strip_html_tags(text)
+    return text.gsub(/\<[\/]?a.*?\>/, "")
+end
+
+# Group results from the same device/configuration/description
 tmp = {}
 dirlist.sort.each {|f|
-    if File.basename(f) =~ /(\d+MHz\-[0-9A-F]{8})/ then
-        tmp[$1] = [] if not tmp.has_key?($1)
-        tmp[$1].push(f)
+    if File.basename(f) =~ /(.*MHz\-[0-9A-F]{8})/ then
+        id = $1
+        id = (read_file(f, "_description.txt") or "") + " : " + id
+        tmp[id] = [] if not tmp.has_key?(id)
+        tmp[id].push(f)
     end
 }
 dirlist = []
-tmp.to_a.sort {|x,y| x[0] <=> y[0] }.each {|x| dirlist.push(x[1]) }
+tmp.to_a.sort {|x,y| strip_html_tags(x[0]) <=> strip_html_tags(y[0]) }.each {|x|
+    dirlist.push(x[1])
+}
 
 dirlist.each {|a|
-    printf("<table cellspacing=10><tr>\n")
+    printf("<b>%s (reliability for different dram_tpr3 settings)</b>\n",
+           (read_file(a[0], "_description.txt") or "Unknown device"))
+    printf("<table border=1 style='border-collapse: collapse;")
+    printf(" empty-cells: show; font-family: arial; font-size: small;")
+    printf(" white-space: nowrap; background: #F0F0F0;'>\n")
+
+    printf("<tr>")
+    printf("<td><table border=0 style='border-collapse: collapse;")
+    printf(" empty-cells: show; font-family: arial; font-size: small;")
+    printf(" white-space: nowrap; background: #F0F0F0;'>\n")
+    printf("<tr><td>%s", read_file(a[0], "_a10_meminfo.txt").gsub("\n", "<br>"))
+    printf("</table>")
     a.each {|f|
         printf("<td>")
         subtest_dir_to_html_table(f)
