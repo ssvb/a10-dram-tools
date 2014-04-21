@@ -19,9 +19,10 @@
 raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
 
 require 'zlib'
+require_relative 'tpr3-common.rb'
 
-# No more than 10 minutes would be ever needed
-$watchdog_max_timeout = 10 * 60
+# No more than 5 minutes would be ever needed
+$watchdog_max_timeout = 5 * 60
 
 # Check if we have all the tools and are provided with a proper working directory
 
@@ -87,31 +88,74 @@ $root_directory = ARGV[0]
 
 # Check the current memory configuration
 
-a10_meminfo_log = `a10-meminfo`
-a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log)
+a10_meminfo_log = `a10-meminfo`.strip
+hostname = `hostname`.strip
 
 hardware_id = "unknown"
 if `cat /proc/cpuinfo` =~ /Hardware\s*\:\s*(sun.*?)[\s\n$]/ then
     hardware_id = $1
 end
 
-if not a10_meminfo_log =~ /dram_clk\s*=\s*(\d+)/ then
-    printf("Error: a10-meminfo is not installed\n")
-    exit(1)
+# [    2.255645] axp20_buck3: 700 <--> 3500 mV at 1250 mV
+if `dmesg` =~ /axp20_buck3: \d+ <--> \d+ mV at (\d+) mV/ then
+    dcdc3_vol = $1.to_i
 end
 
+if not a10_meminfo_log =~ /dram_clk\s*=\s*(\d+)/ then
+    raise("Error: bad dram_clk from a10-meminfo")
+end
 dram_freq = $1
 
-$subtest_directory = File.join($root_directory, hardware_id + "-" + dram_freq + "MHz-" +
+if not a10_meminfo_log =~ /dram_bus_width\s*=\s*(\d+)/ then
+    raise("Error: bad dram_bus_width from a10-meminfo")
+end
+
+number_of_lanes = $1.to_i / 8
+
+# Add the dcdc3 voltage information to the memtester log
+a10_meminfo_log = "dcdc3_vol         = %d\n" % dcdc3_vol + a10_meminfo_log
+# Calculate CRC32 with dram_tpr3 information filtered out
+a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log.gsub(
+                                    /(dram_tpr3\s+=\s+0x\d+)/, ""))
+
+$subtest_directory = File.join($root_directory,
+                               hostname + "-" + hardware_id + "-" +
+                               dram_freq + "MHz-" +
+                               "%.3fV-" % (dcdc3_vol.to_f / 1000) +
                                sprintf("%08X", a10_meminfo_log_crc32))
 
 # Ensure that a subdirectory exists for this configuration
-Dir.mkdir($subtest_directory) if not File.directory?($subtest_directory)
 
-# Save the a10-meminfo log for future reference
-fh = File.open(File.join($subtest_directory, "_a10_meminfo.txt"), "w")
-fh.write(a10_meminfo_log)
-fh.close()
+def read_file(filename)
+    return if not File.exists?(filename)
+    fh = File.open(filename, "rb")
+    data = fh.read
+    fh.close
+    return data
+end
+
+def schedule_new_job(dir, adj, priority)
+    job_file_name = "_job_phase+=[" +
+        adj.reverse.map {|a| sprintf("%s%d", (a < 0 ? "" : "+"), a)}.join(",") +
+       "].priority_%d" % priority
+    job_file_full_path = File.join(dir, job_file_name)
+    if not File.exists?(job_file_full_path) then
+        fh = File.open(job_file_full_path, "w")
+        fh.close
+    end
+end
+
+if not File.directory?($subtest_directory) then
+    Dir.mkdir($subtest_directory)
+
+    # Save the a10-meminfo log for future reference
+    fh = File.open(File.join($subtest_directory, "_a10_meminfo.txt"), "w")
+    fh.write(a10_meminfo_log)
+    fh.close()
+
+    # Schedule the first iteration with no per-lane phase adjustments
+    schedule_new_job($subtest_directory, [0] * number_of_lanes, 1000)
+end
 
 # Setup the hardware watchdog and provide some functions to control it
 
@@ -122,42 +166,28 @@ def reset_watchdog_timeout(new_timeout)
         raise "Bad watchdog timeout"
     end
     $watchdog.printf("%d\n", new_timeout)
+    $watchdog.sync
 end
 
 def disable_watchdog()
     $watchdog.printf("-1\n")
+    $watchdog.sync
+    sleep(1)
 end
 
-# Now pick a previously untested tpr3 configuration
-
-tpr3_gen = Enumerator::Generator.new {|tpr3_gen|
-    [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
-     0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38].each {|mfxdly|
-        [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc].each {|sdphase|
-            tpr3_gen.yield((mfxdly << 16) | (sdphase * 0x1111))
-        }
-    }
-}
-
 def log_progress(log_name, message)
-    fh = File.open(log_name, "w")
+    fh = File.open(log_name, "wb")
     fh.write(message)
+    fh.sync
     fh.close
     `sync`
     sleep(1)
 end
 
-def read_file(filename)
-    fh = File.open(filename)
-    data = fh.read
-    fh.close
-    return data
-end
-
-def run_test(tpr3_log_name, tpr3, suffix)
+def run_test(tpr3_log_name, tpr3, suffix, hardening)
 
     # Keep a notice about the current tpr3 check progress
-    fh = File.open(File.join($subtest_directory, "_current_work.txt"), "w")
+    fh = File.open(File.join($subtest_directory, "_current_work_item.txt"), "w")
     fh.write(File.basename(tpr3_log_name))
     fh.close
 
@@ -168,7 +198,7 @@ def run_test(tpr3_log_name, tpr3, suffix)
         "before configuring tpr3" + suffix)
 
     if not `a10-set-tpr3 #{sprintf("0x%08X", tpr3)}` =~ /Done/ then
-        log_progress("executing a10-set-tpr3 failed")
+        log_progress(tpr3_log_name, "executing a10-set-tpr3 failed")
         exit(1)
     end
 
@@ -178,15 +208,22 @@ def run_test(tpr3_log_name, tpr3, suffix)
     memtester_ok_count = 0
     memtester_total_count = 0
 
-    1.upto(5) {
-        # 5 minutes per individual lima-memtester run should be enough
-        reset_watchdog_timeout(5 * 60) 
-        `lima-memtester 8M 1`
+    1.upto(hardening ? 100 : 10) {
+        # 2 minutes per individual lima-memtester run should be enough
+        reset_watchdog_timeout(hardening ? 4 * 60 : 2 * 60)
+        memtester_env_opts = "MEMTESTER_EARLY_EXIT=1"
+        memtester_env_opts +=" MEMTESTER_TEST_MASK=6400" if not hardening
+        memtester_log = `#{memtester_env_opts} lima-memtester 8M 1 2>&1 >/dev/null`
+        memtester_log.force_encoding("ASCII-8BIT")
         memtester_ok_count += 1 if $?.to_i == 0
         memtester_total_count += 1
         log_progress(tpr3_log_name,
                      sprintf("memtester success rate: %d/%d",
                              memtester_ok_count, memtester_total_count))
+        if memtester_ok_count != memtester_total_count then
+            log_progress(tpr3_log_name + ".memtester", memtester_log)
+            break
+        end
     }
 
     log_progress(tpr3_log_name,
@@ -206,20 +243,40 @@ if ARGV[1] and not File.exists?(description_filename) then
     fh.close
 end
 
-tpr3_gen.each {|tpr3|
-    tpr3_log_file = File.join($subtest_directory, sprintf("tpr3_0x%08X", tpr3))
-    if not File.exists?(tpr3_log_file) then
-        run_test(tpr3_log_file, tpr3, ", try1")
-    elsif read_file(tpr3_log_file) == "before configuring tpr3, try1" then
-        run_test(tpr3_log_file, tpr3, ", try2")
-    elsif read_file(tpr3_log_file) == "before configuring tpr3, try2" then
-        run_test(tpr3_log_file, tpr3, ", try3")
-    end
+[false, true].each {|enforced_hardening|
+    jobs_finder_generator($subtest_directory, {:sorted => false}).each {|job_info|
+        next if job_info[:done] and not enforced_hardening
+        $lane_phase_adjust = job_info[:lane_phase_adjustments]
+
+        tpr3_generator($lane_phase_adjust).each {|tpr3_info|
+            tpr3 = tpr3_info[:tpr3]
+            tpr3_log_file = File.join($subtest_directory,
+                                      sprintf("tpr3_0x%08X", tpr3))
+
+            hardening = (job_info[:hardening] or enforced_hardening)
+            if not read_file(tpr3_log_file) ==
+                   "FINISHED, memtester success rate: 10/10"
+            then
+                hardening = false
+            end
+
+            tpr3_log_file += ".hardening" if hardening
+            if not File.exists?(tpr3_log_file) then
+                run_test(tpr3_log_file, tpr3, ", try1", hardening)
+            elsif read_file(tpr3_log_file) == "before configuring tpr3, try1" then
+                run_test(tpr3_log_file, tpr3, ", try2", hardening)
+            end
+        }
+
+        if not job_info[:done] then
+            File.rename(job_info[:job_file_name], job_info[:job_file_name] + ".done")
+        end
+    }
 }
 
 disable_watchdog()
 
 # We are done with all the work
-if File.exists?(File.join($subtest_directory, "_current_work.txt")) then
-    File.delete(File.join($subtest_directory, "_current_work.txt"))
+if File.exists?(File.join($subtest_directory, "_current_work_item.txt")) then
+    File.delete(File.join($subtest_directory, "_current_work_item.txt"))
 end

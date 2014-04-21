@@ -16,6 +16,10 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
+
+require_relative 'tpr3-common.rb'
+
 if not ARGV[0] or not File.directory?(ARGV[0]) then
     printf("Usage: #{$PROGRAM_NAME} [results_directory] > report.html\n")
     printf("\n")
@@ -26,60 +30,140 @@ if not ARGV[0] or not File.directory?(ARGV[0]) then
     exit(1)
 end
 
-def read_file(dir, name)
-    fullname = File.join(dir, name)
-    return if not File.exists?(fullname)
-    fh = File.open(fullname)
-    data = fh.read
-    fh.close
-    return data
-end
-
-def subtest_dir_to_html_table(dir)
+def parse_subtest_dir(dir, adj)
 
     mfxdly_list   = [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
                      0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38]
-    sdphase_list  = [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc]
-    sdphase_label = [90, 72, 54, 36, 108, 90, 72, 54, 126,
-                     108, 90, 72, 144, 126, 108, 90]
+    sdphase_list  = [36, 54, 72, 90, 108, 126]
 
-    def lookup_tpr3(dir, tpr3)
-        filename = File.join(dir, sprintf("tpr3_0x%08X", tpr3))
-        return "<td>" if not File.exists?(filename)
-        fh = File.open(filename)
-        data = fh.read
-        fh.close
+    tpr3_status_logs = {}
+    memtester_logs = {}
+    tpr3_print_name = {}
 
-        color = "#FF0000"
-        if data =~ /memtester success rate: (\d+)\/(\d+)/ then
-            passed_tests = $1.to_i
-            total_tests = $1.to_i
-            if passed_tests == 5 then
-                color = "green"
+    score_per_sdphase_label = {}
+    stability_score = 0
+    memtester_subtest_stats = {}
+    lane_fail_stats = [0] * 4
+    bit_fail_stats = [0] * 32
+    lane_fail_list = [{}, {}, {}, {}]
+
+    tpr3_generator(adj).each {|tpr3_info|
+        tpr3 = tpr3_info[:tpr3]
+        tpr3_status_logs[tpr3] = (read_file(dir, sprintf(
+                                            "tpr3_0x%08X", tpr3)) or "")
+        memtester_logs[tpr3] = (read_file(dir, sprintf(
+                                 "tpr3_0x%08X.memtester", tpr3)) or "")
+
+        tpr3_status_log = tpr3_status_logs[tpr3]
+
+        tpr3_print_name[tpr3] = sprintf("0x%06X", tpr3)
+        if tpr3_status_log =~ /memtester success rate: (\d+)\/(\d+)/ then
+            stability_score += $1.to_i
+            tmp = tpr3_info[:sdphase_deg]
+            score_per_sdphase_label[tmp] = (score_per_sdphase_label[tmp] or 0) + $1.to_i
+        end
+        memtester_log = memtester_logs[tpr3]
+        if memtester_log =~ /FAILURE: 0x([0-9a-f]{8}) != 0x([0-9a-f]{8}).*?\((.*)\)/ then
+            val1 = $1.to_i(16)
+            val2 = $2.to_i(16)
+            memtester_subtest_stats[$3] = (memtester_subtest_stats[$3] or 0) + 1
+            print_name = sprintf("0x%02X", tpr3 >> 16)
+            3.downto(0) {|lane|
+                mask = 0xFF << (lane * 8)
+                if (val1 & mask) != (val2 & mask) then
+                    lane_fail_list[lane][tpr3] = true
+                    lane_fail_stats[lane] += 1
+                    print_name += sprintf("<b>%X</b>", (tpr3 >> (lane * 4)) & 0xF)
+                else
+                    print_name += sprintf("%X", (tpr3 >> (lane * 4)) & 0xF)
+                end
+            }
+            tpr3_print_name[tpr3] = print_name
+            0.upto(31) {|bit|
+                mask = 1 << bit
+                if (val1 & mask) != (val2 & mask) then
+                    bit_fail_stats[bit] += 1
+                end
+            }
+        end
+    }
+
+    def get_nice_color(dir, tpr3, data, memtester_log)
+
+        workdata = (read_file(dir, "_current_work_item.txt") or "")
+        if workdata.include?(sprintf("%08X", tpr3)) then
+            return "#C0C0C0" # gray marker - work is still in progress
+        end
+
+        tpr3_hardened_log = read_file(dir, sprintf("tpr3_0x%08X.hardening", tpr3))
+        if tpr3_hardened_log then
+            if tpr3_hardened_log == "FINISHED, memtester success rate: 100/100" then
+                return "#008000"
             else
-                green_part = 127 + passed_tests * 128 / 4
-                blue_part  = total_tests * 128 / 4
-                color = sprintf("#FF%02X%02X", green_part, blue_part)
+                return "#FFFF00"
             end
         end
 
-        return sprintf("<td bgcolor=%s title='%s'>0x%06X", color, data, tpr3)
+        passed_tests = 0
+        total_tests = 1
+        if data =~ /memtester success rate: (\d+)\/(\d+)/ then
+            passed_tests = $1.to_i
+            total_tests = $2.to_i
+        end
+        if passed_tests >= 10 then
+            color = "#40C040"
+        else
+            def lerp(a, b, ratio) return (a + (b - a) * ratio).to_i end
+            red_part = 0xFF
+            if memtester_log == "" then
+                blue_part = lerp(0x40, red_part, Math.sqrt(passed_tests + total_tests) / 4.5)
+                green_part = 0
+            else
+                green_part = lerp(0, red_part, Math.sqrt(passed_tests + total_tests) / 4.5)
+                blue_part = 0
+            end
+            color = sprintf("#%02X%02X%02X", red_part, green_part, blue_part)
+        end
+        return color
     end
 
-    printf("<table border=1 style='border-collapse: collapse;")
-    printf(" empty-cells: show; font-family: arial; font-size: small;")
-    printf(" white-space: nowrap; background: #F0F0F0;'>\n")
-    printf("<tr><th>MFxDLY \\ SDPHASE")
+    html_report = sprintf("<table border=1 style='border-collapse: collapse;")
+    html_report << sprintf(" empty-cells: show; font-family: arial; font-size: small;")
+    html_report << sprintf(" white-space: nowrap; background: #F0F0F0;'>\n")
+    html_report << sprintf("<tr><th>mfxdly")
     sdphase_list.each {|sdphase|
-        printf("<th>%d", sdphase_label[sdphase])
+#        next if not gen_tpr3(0, sdphase, adj)
+        html_report << sprintf("<th>phase=%d", sdphase)
     }
     mfxdly_list.each {|mfxdly|
-        printf("<tr><th><b>%3X</b>", mfxdly)
+        html_report << sprintf("<tr><th><b>0x%02X</b>", mfxdly)
         sdphase_list.each {|sdphase|
-            printf("%s", lookup_tpr3(dir, (mfxdly << 16) | (sdphase * 0x1111)))
+            tpr3 = gen_tpr3(mfxdly, sdphase, adj)
+            if not tpr3 then
+                html_report << "<td>"
+                next
+            end
+            data = tpr3_status_logs[tpr3]
+            if data == "" then
+                html_report << "<td>"
+                next
+            end
+            memtester_log = memtester_logs[tpr3]
+            color = get_nice_color(dir, tpr3, data, memtester_log)
+            html_report << sprintf("<td bgcolor=%s title='%s'>%s", color, data + "\n" + memtester_log, tpr3_print_name[tpr3])
         }
     }
-    printf("</table>\n")
+    html_report << sprintf("</table>\n")
+
+    return {
+        :html_report => html_report,
+        :memtester_subtest_stats => memtester_subtest_stats,
+        :lane_fail_stats => lane_fail_stats,
+        :bit_fail_stats => bit_fail_stats,
+        :stability_score => stability_score,
+        :lane_fail_list => lane_fail_list,
+        :score_per_sdphase_label => score_per_sdphase_label,
+    }
 end
 
 print "
@@ -105,11 +189,16 @@ The <a href='https://github.com/OLIMEX/OLINUXINO/blob/master/HARDWARE/RK3066-PDF
 can be checked for more details about the MFWDLY, MFBDLY and SDPHASE bit fields. The Rockchip 30XX family
 of SoCs is apparently using the same DRAM controller IP.</p>
 <p>
-Results interpretation (some results are actually a mix of RED and YELLOW):
+Results interpretation:
 <ul>
-<li>RED - the hardware locks up relatively quickly.
-<li>YELLOW - may run for a relatively long time, but still deadlocks or suffers from data corruption.
-<li>GREEN - no problems detected during roughly <b>~5 minutes</b> of <a href='https://github.com/ssvb/lima-memtester/'>lima-memtester</a> run.
+<li>The shades of RED/PURPLE/MAGENTA - hardware deadlocks, this usually indicates insufficient dcdc3 voltage.
+<li>The shades of RED/ORANGE/YELLOW - data corruption, this may be attributed to other reasons.
+Including, but not limited to phase misalignment between different byte lanes. See the Figure 6 from
+<a href='http://www.altera.com/literature/wp/wp-01034-Utilizing-Leveling-Techniques-in-DDR3-SDRAM.pdf'>Altera
+- Utilizing Leveling Techniques in DDR3 SDRAM Memory Interfaces</a> as a reasonaby good illustration.
+<li>GREEN - no problems detected during just a few minutes of running <a href='https://github.com/ssvb/lima-memtester/'>lima-memtester</a>.
+These dram_tpr3 values still need thorough verification by a much longer run of lima-memtester (8-10 hours
+is reasonable) and other stress tests.
 </ul>
 </p>
 "
@@ -127,7 +216,7 @@ end
 # Group results from the same device/configuration/description
 tmp = {}
 dirlist.sort.each {|f|
-    if File.basename(f) =~ /(.*MHz\-[0-9A-F]{8})/ then
+    if File.basename(f) =~ /(.*MHz\-\d+\.\d+V-[0-9A-F]{8})/ then
         id = $1
         id = (read_file(f, "_description.txt") or "") + " : " + id
         tmp[id] = [] if not tmp.has_key?(id)
@@ -140,41 +229,89 @@ tmp.to_a.sort {|x,y| strip_html_tags(x[0]) <=> strip_html_tags(y[0]) }.each {|x|
 }
 
 dirlist.each {|a|
-    printf("<b>%s (reliability for different dram_tpr3 settings)</b>\n",
+    a10_meminfo = read_file(a[0], "_a10_meminfo.txt")
+    if not a10_meminfo =~ /dram_bus_width\s*=\s*(\d+)/ then
+        raise("Error: dram_bus_width is not found in the a10-meminfo log\n")
+    end
+    $number_of_lanes = $1.to_i / 8
+
+    printf("<h2><b>%s</b></h2>\n",
            (read_file(a[0], "_description.txt") or "Unknown device"))
+
     printf("<table border=1 style='border-collapse: collapse;")
-    printf(" empty-cells: show; font-family: arial; font-size: small;")
+    printf(" empty-cells: show; font-family: Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New, monospace; font-size: small;")
     printf(" white-space: nowrap; background: #F0F0F0;'>\n")
 
+    a.each {|f|
+        jobs_finder_generator(f, {:sorted => true}).each {|job_info|
+            adj = job_info[:lane_phase_adjustments]
     printf("<tr>")
     printf("<td><table border=0 style='border-collapse: collapse;")
-    printf(" empty-cells: show; font-family: arial; font-size: small;")
+    printf(" empty-cells: show; font-family: Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New, monospace; font-size: small;")
     printf(" white-space: nowrap; background: #F0F0F0;'>\n")
-    printf("<tr><td>%s", read_file(a[0], "_a10_meminfo.txt").gsub("\n", "<br>"))
+    printf("<tr><td>%s", a10_meminfo.gsub("\n", "<br>"))
     printf("</table>")
-    a.each {|f|
-        printf("<td>")
-        subtest_dir_to_html_table(f)
+
+            subtest_results = parse_subtest_dir(f, adj)
+            printf("<td>%s", subtest_results[:html_report])
+            printf("<td>")
+
+            printf("Lane phase adjustments: [%s]<br><br>", adj.reverse.join(", "))
+            memtester_subtest_stats = subtest_results[:memtester_subtest_stats].to_a
+            memtester_subtest_stats.sort! {|x, y| y[1] <=> x[1] }
+            printf("Error statistics from memtester: [%s]<br>",
+                   memtester_subtest_stats.map {|a|
+                       sprintf("%s=%d", a[0], a[1])
+                   }.join(", "))
+            column_scores = subtest_results[:score_per_sdphase_label].sort.map {|a| a[1] }
+            printf("<br>")
+            1.upto(column_scores.size) {|s|
+                score, i = column_scores.each_index.map {|i|
+                     tmp = column_scores.slice(i, s)
+                     tmp.size == s ? (tmp.inject 0, :+) : 0
+                 }.each_with_index.max
+                 printf("Best number of successful memtester runs, which span over %d columns (%d-%d): %d<br>",
+                        s, i, i + s - 1, score)
+            }
+
+            printf("<br>Errors per lane: [%s]. ",
+                   subtest_results[:lane_fail_stats].reverse.join(", "))
+
+            lane_fail_stats = subtest_results[:lane_fail_stats]
+            lane_fail_list = subtest_results[:lane_fail_list]
+            worst_lane_id = lane_fail_stats.each_with_index.max[1]
+            worst_lane_fail_list = lane_fail_list[worst_lane_id]
+            printf("Lane %d is the most noisy/problematic.<br><br>", worst_lane_id)
+
+            something_is_still_bad = false
+            lane_fail_list.each_with_index {|fail_list, lane_id|
+                matched_cnt = 0
+                total_cnt = 0
+                fail_list.each {|tpr3, dummy|
+                    matched_cnt += 1 if worst_lane_fail_list.has_key?(tpr3)
+                    total_cnt += 1
+                }
+                if total_cnt > 0 and lane_id != worst_lane_id then
+                    something_is_still_bad = true if matched_cnt != total_cnt
+
+                    if matched_cnt > 0 then
+                        printf("Errors from the lane %d are %.1f%% eclipsed by the worst lane %d.<br>",
+                               lane_id, (matched_cnt.to_f / total_cnt.to_f) * 100,
+                               worst_lane_id)
+                    else
+                        printf("Errors from the lane %d are not intersecting with the errors from the worst line %d.<br>",
+                               lane_id, worst_lane_id)
+                    end
+                end
+            }
+            if something_is_still_bad then
+                adj1 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x - 1}
+                adj2 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x + 1}
+#                printf("<br>Need to try lane phase adjustments <b>[%s]</b> and <b>[%s]</b> for further analysis.<br>",
+#                      adj1.reverse.join(", "), adj2.reverse.join(", "))
+            end
+        }
     }
     printf("</table>")
     printf("</p>\n")
 }
-
-print "
-<p>
-Notes:
-<ul>
-<li>The default settings (dram_tpr3=0x0) are exactly in the center cells
-of the tables. They tend to be not the very best.
-<li>Having some dram_tpr3 setting marked as GREEN does not mean that
-this particular setup is really stable. More like it is just a good
-candidate for more extensive testing. It is recommended to run
-lima-memtester for at least <b>8-10 hours</b> before deciding that
-this configuration is really usable.
-<li>Even after identifying the highest dram clock speed, where lima-memtester
-can't detect any problems during a long run, it is still a good idea to
-reduce the dram clock speed by at least 24MHz from that point (in order
-to have some extra safety headroom).
-</ul>
-</p>
-"
