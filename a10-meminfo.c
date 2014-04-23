@@ -114,6 +114,7 @@ struct dram_para {
 	u32 emr1;
 	u32 emr2;
 	u32 emr3;
+	u32 mbus_clock;
 };
 
 /* Clock control header copied from include/asm/arch-sunxi/clock.h */
@@ -260,8 +261,39 @@ int main(int argc, char **argv)
          (((ccm->pll5_cfg >> CCM_PLL5_FACTOR_M) & CCM_PLL5_FACTOR_M_SIZE) + 1)
     );
 
+    /*
+     * A13 and A20 have MBUS, A10 does not. Or at least MBUS has no
+     * configuration knobs exposed there.
+     */
+    if (ccm->mbus_clk_cfg & (1 << 31))
+    {
+        u32 mbus_clk_src = (ccm->mbus_clk_cfg >> 24) & 3;
+        u32 mbus_n = 1 << ((ccm->mbus_clk_cfg >> 16) & 3); /* 1/2/4/8 */
+        u32 mbus_m = (ccm->mbus_clk_cfg & 15) + 1;         /* 1-16 */
+
+        if (mbus_clk_src == 0) /* OSC24M */
+        {
+            p.mbus_clock = 24 / mbus_n / mbus_m;
+        }
+        else if (mbus_clk_src == 1) /* PLL6*2 */
+        {
+            u32 pll6x2_clk = 24 * ((ccm->pll6_cfg >> 8) & 31) *     /* N */
+                                  (((ccm->pll6_cfg >> 4) & 3) + 1); /* K */
+            p.mbus_clock = pll6x2_clk / mbus_n / mbus_m;
+        }
+        else if (mbus_clk_src == 2) /* PLL5P */
+        {
+            u32 pll5p_clk = 24 *
+                ((ccm->pll5_cfg >> CCM_PLL5_FACTOR_N) & CCM_PLL5_FACTOR_N_SIZE) *
+                (((ccm->pll5_cfg >> CCM_PLL5_FACTOR_K) & CCM_PLL5_FACTOR_K_SIZE) + 1) /
+                (1 << (((ccm->pll5_cfg >> CCM_PLL5_FACTOR_P) & CCM_PLL5_FACTOR_P_SIZE)));
+            p.mbus_clock = pll5p_clk / mbus_n / mbus_m;
+        }
+    }
+
     /* Print dram_para struct */
     printf("dram_clk          = %d\n", p.clock);
+    printf("mbus_clk          = %d\n", p.mbus_clock);
     printf("dram_type         = %d\n", p.type);
     printf("dram_rank_num     = %d\n", p.rank_num);
     printf("dram_chip_density = %d\n", p.density);
