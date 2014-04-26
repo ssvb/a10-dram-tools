@@ -130,6 +130,17 @@ def calc_tpr(dram_freq, dram_timings)
     tmp[:tRTODT] = ns_to_ck(dram_freq, dram_timings, :tRTODT)
     tmp[:tRFC]   = ns_to_ck(dram_freq, dram_timings, :tRFC)
     tmp[:tCCD]   = ns_to_ck(dram_freq, dram_timings, :tCCD)
+
+    # Apply extra requirements from the RK30XX manual:
+    #     tXS  = max(tXS, tXSDLL)
+    #     tXP  = max(tXP, tXPDLL)
+    #     tRTP = max(tRTP, 2)
+    #     tCKE = max(tCKE, tCKESR)
+    tmp[:tXS] = [tmp[:tXS], tmp[:tDLLK]].max
+    tmp[:tXP] = [tmp[:tXP], ns_to_ck(dram_freq, dram_timings, :tXPDLL)].max
+    tmp[:tRTP] = [tmp[:tRTP], 2].max
+    tmp[:tCKE] += 1 # tCKESR = tCKE(min) + 1 nCK
+
     tpr = convert_to_tpr(tmp)
 
     # A sanity check: ensure that the roundtrip conversion to the
