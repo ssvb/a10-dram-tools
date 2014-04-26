@@ -117,6 +117,18 @@ MEM4G16D3EABG_125 = derive_from_JEDEC_DDR3_1333_9_9_9({
 
 ###############################################################################
 
+H5TQ2G63BFR = derive_from_JEDEC_DDR3_1333_9_9_9({
+    :density   => 2048,
+    :page_size => 2048,
+    :io_width  => 16,
+    :label     => "Hynix H5TQ2G63BFR",
+    :url       => "http://hands.com/~lkcl/H5TQ2G63BFR.pdf",
+    :tRTW     => {:ck => 0}, # 0 - default, 1 - extra cycle
+    :tRTODT   => {:ck => 0}, # 0 - default, 1 - extra cycle
+})
+
+###############################################################################
+
 def get_the_list_of_boards()
     return {
         "Cubieboard" => {
@@ -166,6 +178,18 @@ def get_the_list_of_boards()
                 tpr4:   0,
                 emr1:   0x4,
             }
-        }
+        },
+        "Mele_A1000" => {
+            url:       "http://linux-sunxi.org/Mele_A1000",
+            dram_size: 512,
+            dram_chip: H5TQ2G63BFR,
+            dram_para: {
+                zq:     123,
+                odt_en: 0,
+                tpr3:   0,
+                tpr4:   0,
+                emr1:   0,
+            }
+        },
     }
 end
