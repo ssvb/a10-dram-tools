@@ -14,68 +14,94 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-def deep_copy(a) Marshal.load(Marshal.dump(a)) end
+###############################################################################
+
+def derive_from_JEDEC_DDR3_1333_9_9_9(extra_info)
+    density   = extra_info[:density]
+    page_size = extra_info[:page_size]
+
+    def tRFC_ns(density)
+        return { 512 =>  90.0, 1024 => 110.0, 2048 => 160.0,
+                4096 => 300.0, 8192 => 350.0}[density]
+    end
+    def tFAW_ns(page_size) return {1024 => 30.0, 2048 => 45.0}[page_size] end
+    def tRRD_ns(page_size) return {1024 =>  6.0, 2048 =>  7.5}[page_size] end
+
+    # Fill in the JEDEC timings for the Speed Bin 1333H (DDR3 1333 9-9-9)
+    # Except that use CL=7 (instead of CL=8) for the 400MHz - 533MHz range
+    # because this seems to be what real DRAM chips support
+    timings_info = {
+                 #   tCK  CL  CWL
+        :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
+                  [1.875,  7,  6],  # 400MHz - 533MHz
+                  [  1.5,  9,  7]], # 533MHz - 667MHz
+
+        :tXS      => {:ns => tRFC_ns(density) + 10.0},
+        :tRCD     => {:ns => 13.5},
+        :tRP      => {:ns => 13.5},
+        :tRC      => {:ns => 49.5},
+        :tRAS     => {:ns => 36.0},
+        :tFAW     => {:ns => tFAW_ns(page_size)},
+        :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
+        :tCKE     => {:ck => 3, :ns => 5.625},
+        :tWTR     => {:ck => 4, :ns => 7.5},
+        :tXP      => {:ck => 3, :ns => 6.0},
+        :tXPDLL   => {:ck => 10, :ns => 24.0},
+        :tMRD     => {:ck => 4},
+        :tRTP     => {:ck => 4, :ns => 7.5},
+        :tWR      => {:ns => 15.0},
+        :tDLLK    => {:ck => 512},
+        :tMOD     => {:ck => 12, :ns => 15.0},
+        :tRFC     => {:ns => tRFC_ns(density)},
+        :tCCD     => {:ck => 4},
+        :density  => density,
+    }
+    # And override some of the timings by the externally provided data
+    extra_info.each {|k, v| timings_info[k] = v }
+    return timings_info
+end
 
 ###############################################################################
 
 # This is using a bit wrong datasheet, but we are optimistically assuming
 # that GT8UB512M8_BG has the same timings as GT8UB256M8_BG
 
-GT8UB512M8_BG = {
-             #   tCK  CL  CWL
-    :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
-              [1.875,  7,  6],  # 400MHz - 533MHz
-              [  1.5,  9,  7],  # 533MHz - 667MHz
-              [ 1.25, 11,  8]], # 667MHz - 800MHz
+GT8UB512M8_BG = derive_from_JEDEC_DDR3_1333_9_9_9({
+    :density   => 4096,
+    :page_size => 1024,
+    :io_width  => 8,
+    :label     => "GT GT8UB512M 8EN-BG",
+    :url       => "http://dl.linux-sunxi.org/chips/GT-DDR3-2Gbit-B-DIE-(X8,X16).pdf",
 
-    # tRFC for 4Gb density with a little bit of extra safety margin is taken from
-    # https://github.com/linux-sunxi/u-boot-sunxi/blob/87ca6dc0262d/arch/arm/cpu/armv7/sunxi/dram.c#L415
-    :tXS      => {:ns => 320.0}, # tRFC(min) + 10ns
+    :tRCD      => {:ns => 13.125},
+    :tRP       => {:ns => 13.125},
+    :tRTW      => {:ck => 0}, # 0 - default, 1 - extra cycle
+    :tRTODT    => {:ck => 0}, # 0 - default, 1 - extra cycle
+})
 
-    :tRCD     => {:ns => 13.125},
-    :tRP      => {:ns => 13.125},
-    :tRC      => {:ns => 49.5},
-    :tRAS     => {:ns => 36.0},
-    :tFAW     => {:ns => 30.0},                  # Page size 1K (M8/X8 variant)
-    :tRRD     => {:ck => 4, :ns => 6.0},         # Page size 1K (M8/X8 variant)
-    :tCKE     => {:ck => 3, :ns => 5.625},
-    :tWTR     => {:ck => 4, :ns => 7.5},
-    :tXP      => {:ck => 3, :ns => 6.0},
-    :tMRD     => {:ck => 4},
-    :tRTP     => {:ck => 4, :ns => 7.5},
-    :tWR      => {:ns => 15},
-    :tDLLK    => {:ck => 512},
-    :tRTW     => {:ck => 0}, # 0 - default, 1 - extra cycle
-    :tMOD     => {:ck => 12, :ns => 15.0},
-    :tRTODT   => {:ck => 0}, # 0 - default, 1 - extra cycle
-    :tRFC     => {:ns => 308.0}, # FIXME after we get the right datasheet
-    :tCCD     => {:ck => 4},
+GT8UB256M16_BG = derive_from_JEDEC_DDR3_1333_9_9_9({
+    :density   => 4096,
+    :page_size => 2048,
+    :io_width  => 16,
+    :label     => "GT GT8UB256M16BP-BG",
+    :url       => "http://dl.linux-sunxi.org/chips/GT-DDR3-2Gbit-B-DIE-(X8,X16).pdf",
 
-    :density  => 4096,
-    :io_width => 8,
-    :label    => "GT GT8UB512M 8EN-BG",
-    :url      => "http://dl.linux-sunxi.org/chips/GT-DDR3-2Gbit-B-DIE-(X8,X16).pdf"
-}
-
-GT8UB256M16_BG = deep_copy(GT8UB512M8_BG)
-GT8UB256M16_BG[:tFAW] = {:ns => 45.0}           # Page size 2K (M16/X16 variant)
-GT8UB256M16_BG[:tRRD] = {:ck => 4, :ns => 10.0} # Page size 2K (M16/X16 variant)
-GT8UB256M16_BG[:io_width] = 16
-GT8UB256M16_BG[:label] = "GT GT8UB256M16BP-BG"
+    :tRCD      => {:ns => 13.125},
+    :tRP       => {:ns => 13.125},
+    :tRTW      => {:ck => 0}, # 0 - default, 1 - extra cycle
+    :tRTODT    => {:ck => 0}, # 0 - default, 1 - extra cycle
+})
 
 ###############################################################################
 
-MEM4G16D3EABG_125 = {
-             #   tCK  CL  CWL
-    :tCK =>  [[  3.0,  5,  5],
-              [  2.5,  6,  5],  # 300MHz - 400MHz
-              [1.875,  7,  6],  # 400MHz - 533MHz
-              [  1.5,  9,  7],  # 533MHz - 667MHz
-              [ 1.25, 11,  8]], # 667MHz - 800MHz
-
-    # tRFC for 4Gb density with a little bit of extra safety margin is taken from
-    # https://github.com/linux-sunxi/u-boot-sunxi/blob/87ca6dc0262d/arch/arm/cpu/armv7/sunxi/dram.c#L415
-    :tXS      => {:ns => 320.0}, # tRFC(min) + 10ns
+# It is DDR3-1600, but we still derive from DDR-1333 9-9-9 and just
+# tweak the timings
+MEM4G16D3EABG_125 = derive_from_JEDEC_DDR3_1333_9_9_9({
+    :density   => 4096,
+    :page_size => 2048,
+    :io_width  => 16,
+    :label     => "MEMPHIS MEM4G16D3E ABG-125",
+    :url       => "http://www.memphis.ag/fileadmin/datasheets/MEM4G16D3EABG_10.pdf",
 
     :tRCD     => {:ns => 13.125},
     :tRP      => {:ns => 13.125},
@@ -84,23 +110,10 @@ MEM4G16D3EABG_125 = {
     :tFAW     => {:ns => 30.0},
     :tRRD     => {:ck => 4, :ns => 6.0},
     :tCKE     => {:ck => 3, :ns => 5.0},
-    :tWTR     => {:ck => 4, :ns => 7.5},
-    :tXP      => {:ck => 3, :ns => 6.0},
-    :tMRD     => {:ck => 4},
-    :tRTP     => {:ck => 4, :ns => 7.5},
-    :tWR      => {:ns => 15},
-    :tDLLK    => {:ck => 512},
-    :tRTW     => {:ck => 0}, # 0 - default, 1 - extra cycle
-    :tMOD     => {:ck => 12, :ns => 15.0},
-    :tRTODT   => {:ck => 0}, # 0 - default, 1 - extra cycle
     :tRFC     => {:ns => 260.0},
-    :tCCD     => {:ck => 4},
-
-    :density  => 4096,
-    :io_width => 16,
-    :label    => "MEMPHIS MEM4G16D3E ABG-125",
-    :url      => "http://www.memphis.ag/fileadmin/datasheets/MEM4G16D3EABG_10.pdf",
-}
+    :tRTW     => {:ck => 0}, # 0 - default, 1 - extra cycle
+    :tRTODT   => {:ck => 0}, # 0 - default, 1 - extra cycle
+})
 
 ###############################################################################
 
