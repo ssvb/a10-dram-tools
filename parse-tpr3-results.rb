@@ -214,7 +214,7 @@ See the Figure 6 from
 <li>LIGHTGREEN - no problems detected during only a few minutes of running
 <a href='https://github.com/ssvb/lima-memtester/'>lima-memtester</a>.
 <li>DARKGREEN - no problems detected during up to roughly half an hour run of lima-memtester
-(these extra 'hardening' tests are performed after all the preliminary data has been is collected).
+(these extra 'hardening' tests are performed after all the preliminary data has been collected).
 But even these dram_tpr3 values still need thorough verification by a much longer run of lima-memtester
 (8-10 hours is reasonable) and other stress tests.
 <li>Some digits of the dram_tpr3 values in the table(s) below may be shown using bold font.
