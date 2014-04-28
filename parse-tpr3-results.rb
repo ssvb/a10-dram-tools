@@ -43,9 +43,11 @@ def parse_subtest_dir(dir, adj)
     score_per_sdphase_label = {}
     stability_score = 0
     memtester_subtest_stats = {}
-    lane_fail_stats = [0] * 4
+    lane_r_fail_stats = [0] * 4
+    lane_w_fail_stats = [0] * 4
+    lane_r_fail_list = [{}, {}, {}, {}]
+    lane_w_fail_list = [{}, {}, {}, {}]
     bit_fail_stats = [0] * 32
-    lane_fail_list = [{}, {}, {}, {}]
 
     tpr3_generator(adj).each {|tpr3_info|
         tpr3 = tpr3_info[:tpr3]
@@ -75,8 +77,13 @@ def parse_subtest_dir(dir, adj)
             3.downto(0) {|lane|
                 mask = 0xFF << (lane * 8)
                 if (val1 & mask) != (val2 & mask) then
-                    lane_fail_list[lane][tpr3] = true
-                    lane_fail_stats[lane] += 1
+                    if memtester_log =~ /WRITE FAILURE/ then
+                        lane_w_fail_list[lane][tpr3] = true
+                        lane_w_fail_stats[lane] += 1
+                    elsif memtester_log =~ /READ FAILURE/ then
+                        lane_r_fail_list[lane][tpr3] = true
+                        lane_r_fail_stats[lane] += 1
+                    end
                     print_name += sprintf("<b>%X</b>", (tpr3 >> (lane * 4)) & 0xF)
                 else
                     print_name += sprintf("%X", (tpr3 >> (lane * 4)) & 0xF)
@@ -165,10 +172,12 @@ def parse_subtest_dir(dir, adj)
     return {
         :html_report => html_report,
         :memtester_subtest_stats => memtester_subtest_stats,
-        :lane_fail_stats => lane_fail_stats,
+        :lane_r_fail_stats => lane_r_fail_stats,
+        :lane_w_fail_stats => lane_w_fail_stats,
+        :lane_r_fail_list => lane_r_fail_list,
+        :lane_w_fail_list => lane_w_fail_list,
         :bit_fail_stats => bit_fail_stats,
         :stability_score => stability_score,
-        :lane_fail_list => lane_fail_list,
         :score_per_sdphase_label => score_per_sdphase_label,
     }
 end
@@ -283,7 +292,7 @@ dirlist.each {|a|
             printf("<td>%s", subtest_results[:html_report])
             printf("<td>")
 
-            printf("Lane phase adjustments: [%s]<br><br>", adj.reverse.join(", "))
+            printf("Lane phase adjustments: [%s]<br>", adj.reverse.join(", "))
             memtester_subtest_stats = subtest_results[:memtester_subtest_stats].to_a
             memtester_subtest_stats.sort! {|x, y| y[1] <=> x[1] }
             printf("Error statistics from memtester: [%s]<br>",
@@ -301,42 +310,49 @@ dirlist.each {|a|
                         s, i, i + s - 1, score)
             }
 
-            printf("<br>Errors per lane: [%s]. ",
-                   subtest_results[:lane_fail_stats].reverse.join(", "))
+            def print_lane_err_stats(prefix, lane_fail_stats, lane_fail_list)
+                printf("<br>%s errors per lane: [%s]. ", prefix,
+                       lane_fail_stats.reverse.join(", "))
 
-            lane_fail_stats = subtest_results[:lane_fail_stats]
-            lane_fail_list = subtest_results[:lane_fail_list]
-            worst_lane_id = lane_fail_stats.each_with_index.max[1]
-            worst_lane_fail_list = lane_fail_list[worst_lane_id]
-            printf("Lane %d is the most noisy/problematic.<br><br>", worst_lane_id)
+                worst_lane_id = lane_fail_stats.each_with_index.max[1]
+                worst_lane_fail_list = lane_fail_list[worst_lane_id]
+                printf("Lane %d is the most noisy/problematic.<br>", worst_lane_id)
 
-            something_is_still_bad = false
-            lane_fail_list.each_with_index {|fail_list, lane_id|
-                matched_cnt = 0
-                total_cnt = 0
-                fail_list.each {|tpr3, dummy|
-                    matched_cnt += 1 if worst_lane_fail_list.has_key?(tpr3)
-                    total_cnt += 1
-                }
-                if total_cnt > 0 and lane_id != worst_lane_id then
-                    something_is_still_bad = true if matched_cnt != total_cnt
+                something_is_still_bad = false
+                lane_fail_list.each_with_index {|fail_list, lane_id|
+                    matched_cnt = 0
+                    total_cnt = 0
+                    fail_list.each {|tpr3, dummy|
+                        matched_cnt += 1 if worst_lane_fail_list.has_key?(tpr3)
+                        total_cnt += 1
+                    }
+                    if total_cnt > 0 and lane_id != worst_lane_id then
+                        something_is_still_bad = true if matched_cnt != total_cnt
 
-                    if matched_cnt > 0 then
-                        printf("Errors from the lane %d are %.1f%% eclipsed by the worst lane %d.<br>",
-                               lane_id, (matched_cnt.to_f / total_cnt.to_f) * 100,
-                               worst_lane_id)
-                    else
-                        printf("Errors from the lane %d are not intersecting with the errors from the worst line %d.<br>",
-                               lane_id, worst_lane_id)
+                        if matched_cnt > 0 then
+                            printf("Errors from the lane %d are %.1f%% eclipsed by the worst lane %d.<br>",
+                                   lane_id, (matched_cnt.to_f / total_cnt.to_f) * 100,
+                                   worst_lane_id)
+                        else
+                            printf("Errors from the lane %d are not intersecting with the errors from the worst line %d.<br>",
+                                   lane_id, worst_lane_id)
+                        end
                     end
-                end
-            }
-            if something_is_still_bad then
-                adj1 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x - 1}
-                adj2 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x + 1}
+                }
+                return worst_lane_id
+            end
+
+            print_lane_err_stats("Read", subtest_results[:lane_r_fail_stats],
+                                         subtest_results[:lane_r_fail_list])
+            print_lane_err_stats("Write", subtest_results[:lane_w_fail_stats],
+                                          subtest_results[:lane_w_fail_list])
+
+#            if something_is_still_bad then
+#                adj1 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x - 1}
+#                adj2 = adj.each_with_index.map {|x, i| i == worst_lane_id ? x : x + 1}
 #                printf("<br>Need to try lane phase adjustments <b>[%s]</b> and <b>[%s]</b> for further analysis.<br>",
 #                      adj1.reverse.join(", "), adj2.reverse.join(", "))
-            end
+#            end
         }
     }
     printf("</table>")
