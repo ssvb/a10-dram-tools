@@ -22,7 +22,8 @@ require_relative 'a10-dram-info.rb'
 ###############################################################################
 
 # Bitfields for DDR_PHYCTL_DTPR0, DDR_PHYCTL_DTPR1, DDR_PHYCTL_DTPR2 from
-# RK30xx manual represented as [highest bit, lowest bit, add constant, name]
+# RK30xx manual represented as [highest bit, lowest bit, add constant, name].
+# Update: actually the RK29 sources are a somewhat better match.
 $tpr_bitfields = [
     [ # .tpr0
         [31, 31,  4, :tCCD],
@@ -36,15 +37,14 @@ $tpr_bitfields = [
         [ 1,  0,  4, :tMRD],
     ],
     [ # .tpr1
-        [23, 16,  0, :tRFC],
-        [15, 12,  0, :reserved],
+        [15, 14,  1, :tRNKWTW],
+        [13, 12,  0, :tRNKRTR],
         [11, 11,  0, :tRTODT],
         [10,  9, 12, :tMOD],
         [ 8,  3,  0, :tFAW],
         [ 2,  2,  0, :tRTW],
     ],
     [ # .tpr2
-        [28, 19,  0, :tDLLK],
         [18, 15,  0, :tCKE],
         [14, 10,  0, :tXP],
         [ 9,  0,  0, :tXS],
@@ -109,8 +109,27 @@ def ns_to_ck(dram_freq, dram_timings, param_name)
     end
 end
 
+# A sanity check: ensure that the roundtrip conversion to the
+# key->value hash and back to three 32-bit magic constants does
+# not introduce any errors
+def check_roundtrip_conversion(tpr)
+    if tpr.instance_of? Array then
+        # Array of 3 elements
+        new_tpr = convert_to_tpr(convert_from_tpr(tpr))
+        raise "Roundtrip conversion failed" if (new_tpr <=> tpr) != 0
+    else
+        # Hash with key->value pairs
+        new_tpr = convert_from_tpr(convert_to_tpr(tpr))
+        raise "Roundtrip conversion failed" if new_tpr.size != tpr.size
+        new_tpr.each {|k, v|
+            raise "Roundtrip conversion failed" if tpr[k] != v
+        }
+    end
+end
+
 def calc_tpr(dram_freq, dram_timings)
     tpr_cas9 = [0x42d899b7, 0xa090, 0x22a00]
+    check_roundtrip_conversion(tpr_cas9)
     tmp = convert_from_tpr(tpr_cas9)
     tmp[:tXS]    = ns_to_ck(dram_freq, dram_timings, :tXS)
     tmp[:tRCD]   = ns_to_ck(dram_freq, dram_timings, :tRCD)
@@ -124,11 +143,9 @@ def calc_tpr(dram_freq, dram_timings)
     tmp[:tXP]    = ns_to_ck(dram_freq, dram_timings, :tXP)
     tmp[:tMRD]   = ns_to_ck(dram_freq, dram_timings, :tMRD)
     tmp[:tRTP]   = ns_to_ck(dram_freq, dram_timings, :tRTP)
-    tmp[:tDLLK]  = ns_to_ck(dram_freq, dram_timings, :tDLLK)
     tmp[:tRTW]   = ns_to_ck(dram_freq, dram_timings, :tRTW)
     tmp[:tMOD]   = ns_to_ck(dram_freq, dram_timings, :tMOD)
     tmp[:tRTODT] = ns_to_ck(dram_freq, dram_timings, :tRTODT)
-    tmp[:tRFC]   = ns_to_ck(dram_freq, dram_timings, :tRFC)
     tmp[:tCCD]   = ns_to_ck(dram_freq, dram_timings, :tCCD)
 
     # Apply extra requirements from the RK30XX manual:
@@ -136,20 +153,13 @@ def calc_tpr(dram_freq, dram_timings)
     #     tXP  = max(tXP, tXPDLL)
     #     tRTP = max(tRTP, 2)
     #     tCKE = max(tCKE, tCKESR)
-    tmp[:tXS] = [tmp[:tXS], tmp[:tDLLK]].max
+    tmp[:tXS] = [tmp[:tXS], ns_to_ck(dram_freq, dram_timings, :tDLLK)].max
     tmp[:tXP] = [tmp[:tXP], ns_to_ck(dram_freq, dram_timings, :tXPDLL)].max
     tmp[:tRTP] = [tmp[:tRTP], 2].max
     tmp[:tCKE] += 1 # tCKESR = tCKE(min) + 1 nCK
 
-    tpr = convert_to_tpr(tmp)
-
-    # A sanity check: ensure that the roundtrip conversion to the
-    # key->value hash and back to three 32-bit magic constants does
-    # not introduce any errors
-    convert_from_tpr(tpr).each {|k, v|
-        raise "Roundtrip conversion failed" if tmp[k] != v
-    }
-    return tpr
+    check_roundtrip_conversion(tmp)
+    return convert_to_tpr(tmp)
 end
 
 def print_verbose_timings_info(tmp, dram_freq, dram_timings)
