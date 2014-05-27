@@ -115,6 +115,7 @@ struct dram_para {
 	u32 emr2;
 	u32 emr3;
 	u32 mbus_clock;
+	u32 dqs_gating_delay;
 };
 
 /* Clock control header copied from include/asm/arch-sunxi/clock.h */
@@ -219,6 +220,23 @@ volatile unsigned *map_physical_memory(uint32_t addr, size_t len)
     return mem;
 }
 
+static u32 mctl_get_dqs_gating_delay(volatile struct sunxi_dram_reg *dram,
+                                     int rank, int number_of_lanes)
+{
+    int lane;
+    u32 dqs_gating_delay = 0;
+    /* rank0 gating system latency (3 bits per lane: cycles) */
+    u32 slr = (rank == 0 ? dram->rslr0 : dram->rslr1);
+    /* rank0 gating phase select (2 bits per lane: 90, 180, 270, 360) */
+    u32 dgr = (rank == 0 ? dram->rdgr0 : dram->rdgr1);
+    for (lane = 0; lane < number_of_lanes; lane++)
+    {
+        u32 tmp = ((slr >> (lane * 3)) & 7) << 2;
+        tmp |= ((dgr >> (lane * 2)) & 3);
+        dqs_gating_delay |= tmp << (lane * 8);
+    }
+    return dqs_gating_delay;
+}
 
 int main(int argc, char **argv)
 {
@@ -248,6 +266,7 @@ int main(int argc, char **argv)
     p.rank_num = (r->dcr >> 10 & 3)+1;
     p.io_width = (r->dcr >> 1 & 3) << 3;
     p.bus_width = ((r->dcr >> 6 & 3)+1) << 3;
+    p.dqs_gating_delay = mctl_get_dqs_gating_delay(r, 0, p.bus_width / 8);
     /*
      * The clock for DDR is calculated as:
      * (24 MHz * N * K) / M
@@ -310,7 +329,8 @@ int main(int argc, char **argv)
     printf("dram_emr1         = 0x%x\n", p.emr1);
     printf("dram_emr2         = 0x%x\n", p.emr2);
     printf("dram_emr3         = 0x%x\n", p.emr3);
-    
+    printf("dqs_gating_delay  = 0x%08x\n", p.dqs_gating_delay);
+
     /* Clean up */
     munmap((void *)r, 4096);
     munmap((void *)ccm, 4096);
