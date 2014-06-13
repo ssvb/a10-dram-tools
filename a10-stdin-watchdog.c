@@ -90,7 +90,9 @@ static void *watchdog_thread_function(void *ctx)
 {
     r  = (volatile struct sunxi_timer_reg *) map_physical_memory(TIMER_BASE, 4096);
 
-    /* Enable the hardware watchdog */
+    /* Enable the hardware watchdog (with sun5i workaround) */
+    r->wdog_mode_reg = (5 << 3) | 3;
+    r->wdog_ctrl_reg = (0x0a57 << 1) | 1;
     r->wdog_mode_reg = (5 << 3) | 3;
 
     while (1)
@@ -115,6 +117,7 @@ static void *watchdog_thread_function(void *ctx)
 
         sleep(1);
         r->wdog_ctrl_reg = (0x0a57 << 1) | 1;
+        r->wdog_mode_reg = (5 << 3) | 3;
     }
 }
 
