@@ -22,6 +22,7 @@
 
 #define SUNXI_DRAMC_BASE    0x01c01000
 #define SUNXI_CCM_BASE      0x01C20000
+#define SUNXI_SYS_CTRL_BASE 0x01C00000
 
 #define CCM_PLL5_FACTOR_M    0
 #define CCM_PLL5_FACTOR_K    4
@@ -196,6 +197,11 @@ struct sunxi_ccm_reg {
 	u32 mbus_clk_cfg;	/* 0x15c */
 };
 
+/* Clock control header copied from include/asm/arch-sunxi/clock.h */
+struct sunxi_sysctrl_reg {
+	u32 dummy[0x24 / 4];
+	u32 ver_reg;
+};
 
 int mem_fd = -1;
 
@@ -209,7 +215,7 @@ volatile unsigned *map_physical_memory(uint32_t addr, size_t len)
         exit(1);
     }
 
-    mem = (volatile unsigned *) mmap(NULL, len, PROT_READ, MAP_SHARED, mem_fd, (off_t) addr);
+    mem = (volatile unsigned *) mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, mem_fd, (off_t) addr);
     
     if (mem == MAP_FAILED)
     {
@@ -242,8 +248,24 @@ int main(int argc, char **argv)
 {
     volatile struct sunxi_dram_reg *r  = (volatile struct sunxi_dram_reg *) map_physical_memory(SUNXI_DRAMC_BASE, 4096);
     volatile struct sunxi_ccm_reg *ccm = (volatile struct sunxi_ccm_reg *) map_physical_memory(SUNXI_CCM_BASE, 4096);
+    volatile struct sunxi_sysctrl_reg *sr = (volatile struct sunxi_sysctrl_reg *) map_physical_memory(SUNXI_SYS_CTRL_BASE, 4096);
     struct dram_para p = {0};
-    
+    int pll6mult = 0;
+    u32 backup_ver_reg;
+
+    backup_ver_reg = sr->ver_reg;
+    sr->ver_reg |= 1 << 15;
+    switch (sr->ver_reg >> 16)
+    {
+        case 0x1625: /* sun5i */
+            pll6mult = 1;
+            break;
+        case 0x1651: /* sun7i */
+            pll6mult = 2;
+            break;
+    }
+    sr->ver_reg = backup_ver_reg;
+
     /* Convert information found inside registers back to dram_para struct */
     p.tpr0   = r->tpr0;
     p.tpr1   = r->tpr1;
@@ -296,9 +318,9 @@ int main(int argc, char **argv)
         }
         else if (mbus_clk_src == 1) /* PLL6*2 */
         {
-            u32 pll6x2_clk = 24 * ((ccm->pll6_cfg >> 8) & 31) *     /* N */
-                                  (((ccm->pll6_cfg >> 4) & 3) + 1); /* K */
-            p.mbus_clock = pll6x2_clk / mbus_n / mbus_m;
+            u32 pll6_clk = pll6mult * 12 * ((ccm->pll6_cfg >> 8) & 31) * /* N */
+                                       (((ccm->pll6_cfg >> 4) & 3) + 1); /* K */
+            p.mbus_clock = pll6_clk / mbus_n / mbus_m;
         }
         else if (mbus_clk_src == 2) /* PLL5P */
         {
