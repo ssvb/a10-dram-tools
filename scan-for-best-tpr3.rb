@@ -113,7 +113,7 @@ end
 number_of_lanes = $1.to_i / 8
 
 # Add the dcdc3 voltage information to the memtester log
-a10_meminfo_log = "dcdc3_vol         = %d\n" % dcdc3_vol + a10_meminfo_log
+a10_meminfo_log = "dcdc3_vol         = %d\n" % (dcdc3_vol or 0) + a10_meminfo_log
 # Calculate CRC32 with dram_tpr3 information filtered out
 a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log.gsub(
                                     /(dram_tpr3\s+=\s+0x\d+)/, ""))
