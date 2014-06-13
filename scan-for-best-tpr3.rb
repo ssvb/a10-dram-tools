@@ -238,6 +238,11 @@ def run_test(tpr3_log_name, tpr3, suffix, hardening)
         sprintf("FINISHED, memtester success rate: %d/%d",
                 memtester_ok_count, memtester_total_count))
 
+    # We are done with this work item
+    if File.exists?(File.join($subtest_directory, "_current_work_item.txt")) then
+        File.delete(File.join($subtest_directory, "_current_work_item.txt"))
+    end
+
     # The system will be rebooted by the a10-stdin-watchdog
     reset_watchdog_timeout(0)
     while true do end
