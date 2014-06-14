@@ -117,6 +117,7 @@ struct dram_para {
 	u32 emr3;
 	u32 mbus_clock;
 	u32 dqs_gating_delay;
+	u32 active_windowing;
 };
 
 /* Clock control header copied from include/asm/arch-sunxi/clock.h */
@@ -332,6 +333,8 @@ int main(int argc, char **argv)
         }
     }
 
+    p.active_windowing = (r->ccr & (1 << 14)) == 0;
+
     /* Print dram_para struct */
     printf("dram_clk          = %d\n", p.clock);
     printf("mbus_clk          = %d\n", p.mbus_clock);
@@ -352,6 +355,7 @@ int main(int argc, char **argv)
     printf("dram_emr2         = 0x%x\n", p.emr2);
     printf("dram_emr3         = 0x%x\n", p.emr3);
     printf("dqs_gating_delay  = 0x%08x\n", p.dqs_gating_delay);
+    printf("active_windowing  = %d\n", p.active_windowing);
 
     /* Clean up */
     munmap((void *)r, 4096);
