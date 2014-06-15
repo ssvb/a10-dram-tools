@@ -126,14 +126,6 @@ $subtest_directory = File.join($root_directory,
 
 # Ensure that a subdirectory exists for this configuration
 
-def read_file(filename)
-    return if not File.exists?(filename)
-    fh = File.open(filename, "rb")
-    data = fh.read
-    fh.close
-    return data
-end
-
 def schedule_new_job(dir, adj, priority)
     job_file_name = "_job_phase+=[" +
         adj.reverse.map {|a| sprintf("%s%d", (a < 0 ? "" : "+"), a)}.join(",") +

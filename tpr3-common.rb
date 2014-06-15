@@ -14,8 +14,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-def read_file(dir, name)
-    fullname = File.join(dir, name)
+def read_file(dir = nil, name)
+    fullname = dir ? File.join(dir, name) : name
     return if not File.exists?(fullname)
     fh = File.open(fullname, "rb")
     data = fh.read
