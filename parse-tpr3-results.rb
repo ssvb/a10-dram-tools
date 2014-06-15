@@ -147,6 +147,7 @@ def parse_subtest_dir(dir, adj)
     html_report << sprintf("<tr><th>mfxdly")
     sdphase_list.each {|sdphase|
 #        next if not gen_tpr3(0, sdphase, adj)
+        score_per_sdphase_label[sdphase] = 0 if not score_per_sdphase_label[sdphase]
         html_report << sprintf("<th>phase=%d", sdphase)
     }
     mfxdly_list.each {|mfxdly|
