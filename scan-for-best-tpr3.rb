@@ -112,6 +112,12 @@ end
 
 number_of_lanes = $1.to_i / 8
 
+if not a10_meminfo_log =~ /dram_tpr3\s*=\s*0[Xx]([0-9a-fA-F]+)/ then
+    raise("Error: bad dram_tpr3 from a10-meminfo")
+end
+
+default_tpr3 = $1.to_i(16)
+
 # Add the dcdc3 voltage information to the memtester log
 a10_meminfo_log = "dcdc3_vol         = %d\n" % (dcdc3_vol or 0) + a10_meminfo_log
 # Calculate CRC32 with dram_tpr3 information filtered out
@@ -253,7 +259,9 @@ end
         next if job_info[:done] and not enforced_hardening
         $lane_phase_adjust = job_info[:lane_phase_adjustments]
 
-        tpr3_generator($lane_phase_adjust).each {|tpr3_info|
+        tpr3_reordered_generator($lane_phase_adjust,
+                                 default_tpr3,
+                                 $subtest_directory).each {|tpr3_info|
             tpr3 = tpr3_info[:tpr3]
             tpr3_log_file = File.join($subtest_directory,
                                       sprintf("tpr3_0x%08X", tpr3))

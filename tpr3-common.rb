@@ -103,6 +103,68 @@ def tpr3_generator(adj)
     }
 end
 
+# Parse the report file and get the number of successful memtester runs
+
+def count_successful_memtester_runs(dir, tpr3_info)
+    return 0 if not dir
+    tpr3 = tpr3_info[:tpr3]
+    data = read_file(dir, sprintf("tpr3_0x%08X", tpr3))
+    return 0 if not data
+    if data =~ /memtester success rate: (\d+)\/(\d+)/ then
+        return $1.to_i
+    end
+    return 0
+end
+
+# Calculate the approximate distance between two trp3 values on the table grid
+
+def distance_between_tpr3(tpr3x, tpr3y)
+    mfxdly_idx = {}
+    sdphase_idx = {}
+    [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
+     0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38].each_with_index {|v, i| mfxdly_idx[v] = i}
+    [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc].each_with_index {|v, i| sdphase_idx[v] = i}
+    return Math.sqrt((mfxdly_idx[tpr3x >> 16] - mfxdly_idx[tpr3y >> 16]) ** 2 +
+           ([sdphase_idx[(tpr3x >>  0) & 0xF] - sdphase_idx[(tpr3y >>  0) & 0xF],
+             sdphase_idx[(tpr3x >>  4) & 0xF] - sdphase_idx[(tpr3y >>  4) & 0xF],
+             sdphase_idx[(tpr3x >>  8) & 0xF] - sdphase_idx[(tpr3y >>  8) & 0xF],
+             sdphase_idx[(tpr3x >> 12) & 0xF] - sdphase_idx[(tpr3y >> 12) & 0xF]].max) ** 2)
+end
+
+# Return a sequence of tpr3 values, prioritizing the ones which are more
+# likely to be "good". The good ones are assumed to be near other good
+# results. And in the case of a tie, prioritize the tpr3 values, which
+# are close to the the original tpr3 setup (configured by the bootloader).
+
+def tpr3_reordered_generator(adj = [0, 0, 0, 0], center_tpr3 = 0, dir = nil)
+    tbl = tpr3_generator(adj).to_a.map {|tpr3_info|
+        tmp = tpr3_info
+        tmp[:successful_memtester_runs] = count_successful_memtester_runs(dir, tpr3_info)
+        tmp
+    }
+    tbl.each {|v1|
+        score = 0
+        tbl.each {|v2|
+            dist = distance_between_tpr3(v1[:tpr3], v2[:tpr3])
+            next if dist == 0
+            score += v2[:successful_memtester_runs] / (dist ** 2)
+        }
+        v1[:score] = score
+    }
+    tbl.sort! {|x, y|
+        if y[:score] == x[:score] then
+            # sort by the distance from center (lower distance first)
+            dist_x = distance_between_tpr3(x[:tpr3], center_tpr3)
+            dist_y = distance_between_tpr3(y[:tpr3], center_tpr3)
+            dist_x <=> dist_y
+        else
+            # sort by score (higher score first)
+            y[:score] <=> x[:score]
+        end
+    }
+    tbl.to_enum
+end
+
 # Scans the directory for 'job' description files. Each job is actually
 # fully encoded in the file name. Example:
 #
