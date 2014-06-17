@@ -125,10 +125,10 @@ def distance_between_tpr3(tpr3x, tpr3y)
      0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38].each_with_index {|v, i| mfxdly_idx[v] = i}
     [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc].each_with_index {|v, i| sdphase_idx[v] = i}
     return Math.sqrt((mfxdly_idx[tpr3x >> 16] - mfxdly_idx[tpr3y >> 16]) ** 2 +
-           ([sdphase_idx[(tpr3x >>  0) & 0xF] - sdphase_idx[(tpr3y >>  0) & 0xF],
-             sdphase_idx[(tpr3x >>  4) & 0xF] - sdphase_idx[(tpr3y >>  4) & 0xF],
-             sdphase_idx[(tpr3x >>  8) & 0xF] - sdphase_idx[(tpr3y >>  8) & 0xF],
-             sdphase_idx[(tpr3x >> 12) & 0xF] - sdphase_idx[(tpr3y >> 12) & 0xF]].max) ** 2)
+           ([(sdphase_idx[(tpr3x >>  0) & 0xF] - sdphase_idx[(tpr3y >>  0) & 0xF]).abs,
+             (sdphase_idx[(tpr3x >>  4) & 0xF] - sdphase_idx[(tpr3y >>  4) & 0xF]).abs,
+             (sdphase_idx[(tpr3x >>  8) & 0xF] - sdphase_idx[(tpr3y >>  8) & 0xF]).abs,
+             (sdphase_idx[(tpr3x >> 12) & 0xF] - sdphase_idx[(tpr3y >> 12) & 0xF]).abs].max) ** 2)
 end
 
 # Return a sequence of tpr3 values, prioritizing the ones which are more
