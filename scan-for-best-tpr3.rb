@@ -207,8 +207,6 @@ def run_test(tpr3_log_name, tpr3, suffix, hardening)
     memtester_total_count = 0
 
     1.upto(hardening ? 100 : 10) {|iteration|
-        # 2 minutes per individual lima-memtester run should be enough
-        reset_watchdog_timeout(hardening ? 4 * 60 : 2 * 60)
         memtester_env_opts = "MEMTESTER_EARLY_EXIT=1 MEMTESTER_SKIP_STUCK_ADDRESS=1"
         if not hardening then
             if iteration < 5 then
@@ -219,6 +217,18 @@ def run_test(tpr3_log_name, tpr3, suffix, hardening)
                 memtester_env_opts +=" MEMTESTER_TEST_MASK=0x1900"
             end
         end
+
+        # Sleep a bit to cool down
+        if iteration == 3 then
+            reset_watchdog_timeout(120)
+            printf("sleep 100 seconds in order to cool the CPU down\n")
+            sleep(100)
+        end
+
+        # 2 minutes per individual lima-memtester run should be enough
+        reset_watchdog_timeout(hardening ? 4 * 60 : 2 * 60)
+        # Run memtester
+        printf("run memtester, iteration %d\n", iteration)
         memtester_log = `#{memtester_env_opts} lima-memtester 12M 1 2>&1 >/dev/null`
         memtester_log.force_encoding("ASCII-8BIT")
         memtester_ok_count += 1 if $?.to_i == 0
