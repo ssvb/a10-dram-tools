@@ -281,7 +281,7 @@ int main(int argc, char **argv)
     p.emr3   = r->emr3;
     p.type   = (r->dcr & 0x1 ? 3 : 2);
     p.odt_en = (r->iocr & 0x3);
-    p.zq     = (r->zqcr0 & 0xf0000000)+(r->zqcr0 >> 20 & 0xff)+((r->zqcr0 & 0xfffff) << 8);
+    p.zq     = (r->zqcr0 >> 20 & 0xff)+((r->zqcr0 & 0xfffff) << 8);
     p.cas    = (r->mr >> 4 & 15);
     if (p.type == 3)
         p.cas += 4;
@@ -344,7 +344,10 @@ int main(int argc, char **argv)
     printf("dram_io_width     = %d\n", p.io_width);
     printf("dram_bus_width    = %d\n", p.bus_width);
     printf("dram_cas          = %d\n", p.cas);
-    printf("dram_zq           = 0x%x\n", p.zq);
+    if (p.zq != (r->zqsr & 0xFFFFF) << 8)
+        printf("dram_zq           = 0x%x (0x%x)\n", p.zq, (r->zqsr & 0xFFFFF) << 8);
+    else
+        printf("dram_zq           = 0x%x\n", p.zq);
     printf("dram_odt_en       = %d\n", p.odt_en);
     //printf("dram_size         = %d\n", p.size);
     printf("dram_tpr0         = 0x%x\n", p.tpr0);
