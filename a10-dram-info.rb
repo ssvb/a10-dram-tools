@@ -21,6 +21,7 @@ def derive_from_JEDEC_DDR3_1333_9_9_9(extra_info)
     page_size = extra_info[:page_size]
 
     def tRFC_ns(density)
+        return 350.0 if not density
         return { 512 =>  90.0, 1024 => 110.0, 2048 => 160.0,
                 4096 => 300.0, 8192 => 350.0}[density]
     end
@@ -128,6 +129,28 @@ H5TQ2G63BFR = derive_from_JEDEC_DDR3_1333_9_9_9({
 })
 
 ###############################################################################
+
+GENERIC_DDR3_1333 = derive_from_JEDEC_DDR3_1333_9_9_9({
+    :page_size => 2048,
+    :io_width  => 16,
+    :tRTW     => {:ck => 0}, # 0 - default, 1 - extra cycle
+    :tRTODT   => {:ck => 0}, # 0 - default, 1 - extra cycle
+})
+
+###############################################################################
+
+def get_generic_board()
+    return {
+        dram_chip: GENERIC_DDR3_1333,
+        dram_para: {
+            zq:     123,
+            odt_en: 0,
+            tpr3:   0,
+            tpr4:   0,
+            emr1:   0,
+        }
+    }
+end
 
 def get_the_list_of_boards()
     return {

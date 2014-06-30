@@ -37,7 +37,7 @@ $tpr_bitfields = [
         [ 1,  0,  4, :tMRD],
     ],
     [ # .tpr1
-        [15, 14,  1, :tRNKWTW],
+        [15, 14,  0, :tRNKWTW],
         [13, 12,  0, :tRNKRTR],
         [11, 11,  0, :tRTODT],
         [10,  9, 12, :tMOD],
@@ -198,21 +198,21 @@ def generate_dram_para(board, dram_freq)
     end
 
     printf("static struct dram_para dram_para = {")
-    printf(" /* DRAM timings: %d-%d-%d-%d */\n",
-           cas, tmp[:tRCD], tmp[:tRP], tmp[:tRAS])
+    printf(" /* DRAM timings: %d-%d-%d-%d (%d MHz) */\n",
+           cas, tmp[:tRCD], tmp[:tRP], tmp[:tRAS], dram_freq)
     printf("\t.clock     = %d,\n", dram_freq)
     printf("\t.type      = 3,\n")
     printf("\t.rank_num  = 1,\n")
-    printf("\t.density   = #{dram_timings[:density]},\n")
-    printf("\t.io_width  = #{dram_timings[:io_width]},\n")
-    printf("\t.bus_width = %d,\n", 8 * board[:dram_size] /
-                                   dram_timings[:density] *
-                                   dram_timings[:io_width])
-
+    if board[:dram_size] then
+        printf("\t.density   = #{dram_timings[:density]},\n")
+        printf("\t.io_width  = #{dram_timings[:io_width]},\n")
+        printf("\t.bus_width = %d,\n", 8 * board[:dram_size] /
+                                       dram_timings[:density] *
+                                       dram_timings[:io_width])
+    end
     printf("\t.cas       = %d,\n", cas)
     printf("\t.zq        = 0x%x,\n", board[:dram_para][:zq])
     printf("\t.odt_en    = %d,\n", board[:dram_para][:odt_en])
-    printf("\t.size      = %d,\n", board[:dram_size])
     printf("\t.tpr0      = 0x%x,\n", tpr[0])
     printf("\t.tpr1      = 0x%x,\n", tpr[1])
     printf("\t.tpr2      = 0x%x,\n", tpr[2])
@@ -223,13 +223,15 @@ def generate_dram_para(board, dram_freq)
     printf("\t.emr2      = 0x%x,\n",
            ([get_cwl(dram_freq, dram_timings), 5].max - 5) << 3)
     printf("\t.emr3      = 0x0,\n")
+    printf("\t.active_windowing = 1,\n")
     printf("};\n")
 end
 
 boards = get_the_list_of_boards()
+board_info = ARGV[1] ? boards[ARGV[1]] : get_generic_board()
 
-if not ARGV[0] or not ARGV[1] or not boards[ARGV[0]] then
-    printf("Usage: #{$PROGRAM_NAME} [board_name] [dram_clock_frequency]\n")
+if not ARGV[0] or not board_info then
+    printf("Usage: #{$PROGRAM_NAME} [dram_clock_frequency] <board_name>\n")
     printf("\nThe list of supported boards:\n")
     boards.sort.each {|name, info|
         printf("    %s\n", name)
@@ -238,6 +240,6 @@ if not ARGV[0] or not ARGV[1] or not boards[ARGV[0]] then
 end
 
 # Sanitize input to put it into the [360, 648] range
-dram_freq = [[ARGV[1].to_i, 300].max, 667].min
+dram_freq = [[ARGV[0].to_i, 300].max, 648].min
 
-generate_dram_para(boards[ARGV[0]], dram_freq)
+generate_dram_para(board_info, dram_freq)
