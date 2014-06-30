@@ -18,14 +18,14 @@
 
 raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
 
-require_relative 'tpr3-common.rb'
+require_relative 'a10-tpr3-common.rb'
 
 if not ARGV[0] or not File.directory?(ARGV[0]) then
     printf("Usage: #{$PROGRAM_NAME} [results_directory] > report.html\n")
     printf("\n")
     printf("Where:\n")
     printf("    results_directory - is the directory populated by\n")
-    printf("                        the scan-for-best-tpr3.rb script\n")
+    printf("                        the 'a10-tpr3-scan' script\n")
     printf("    report.html       - is the output of this script\n")
     exit(1)
 end
