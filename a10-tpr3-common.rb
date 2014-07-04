@@ -118,17 +118,31 @@ end
 
 # Calculate the approximate distance between two trp3 values on the table grid
 
+$tpr3_dist_cache = {}
+
 def distance_between_tpr3(tpr3x, tpr3y)
+    # order the values
+    tpr3x, tpr3y = tpr3y, tpr3x if tpr3x < tpr3y
+
+    tmp = $tpr3_dist_cache[tpr3x]
+    cached_dist = tmp ? tmp[tpr3y] : nil
+    return cached_dist if cached_dist != nil
+
     mfxdly_idx = {}
     sdphase_idx = {}
     [0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00,
      0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38].each_with_index {|v, i| mfxdly_idx[v] = i}
     [0x3, 0x2, 0x1, 0x0, 0xe, 0xd, 0xc].each_with_index {|v, i| sdphase_idx[v] = i}
-    return Math.sqrt((mfxdly_idx[tpr3x >> 16] - mfxdly_idx[tpr3y >> 16]) ** 2 +
+
+    dist = Math.sqrt((mfxdly_idx[tpr3x >> 16] - mfxdly_idx[tpr3y >> 16]) ** 2 +
            ([(sdphase_idx[(tpr3x >>  0) & 0xF] - sdphase_idx[(tpr3y >>  0) & 0xF]).abs,
              (sdphase_idx[(tpr3x >>  4) & 0xF] - sdphase_idx[(tpr3y >>  4) & 0xF]).abs,
              (sdphase_idx[(tpr3x >>  8) & 0xF] - sdphase_idx[(tpr3y >>  8) & 0xF]).abs,
              (sdphase_idx[(tpr3x >> 12) & 0xF] - sdphase_idx[(tpr3y >> 12) & 0xF]).abs].max) ** 2)
+
+    $tpr3_dist_cache[tpr3x] = {} if not $tpr3_dist_cache.has_key?(tpr3x)
+    $tpr3_dist_cache[tpr3x][tpr3y] = dist
+    return dist
 end
 
 # Return a sequence of tpr3 values, prioritizing the ones which are more
@@ -136,22 +150,47 @@ end
 # results. And in the case of a tie, prioritize the tpr3 values, which
 # are close to the the original tpr3 setup (configured by the bootloader).
 
-def tpr3_reordered_generator(adj = [0, 0, 0, 0], center_tpr3 = 0, dir = nil)
+$maxscore_cache = {}
+
+def tpr3_reordered_generator(adj = [0, 0, 0, 0], center_tpr3 = 0, dir = nil, height = 1)
+    # Get the ordinary sequence
     tbl = tpr3_generator(adj).to_a.map {|tpr3_info|
         tmp = tpr3_info
         tmp[:successful_memtester_runs] = count_successful_memtester_runs(dir, tpr3_info)
         tmp
     }
+
+    # Calculate the scores
     tbl.each {|v1|
         score = 0
         tbl.each {|v2|
+            next if v2[:successful_memtester_runs] <= 0
             dist = distance_between_tpr3(v1[:tpr3], v2[:tpr3])
-            next if dist == 0
-            score += v2[:successful_memtester_runs] / (dist ** 2)
+            score += v2[:successful_memtester_runs] /
+                     ((dist ** 2) + (height ** 2))
         }
         v1[:score] = score
     }
-    tbl.sort! {|x, y|
+
+    # Normalize the scores
+    maxscore = $maxscore_cache[[height] + adj]
+    if not maxscore then
+        maxscore = 0
+        tbl.each {|v1|
+            maxscore_candidate = 0
+            tbl.each {|v2|
+                dist = distance_between_tpr3(v1[:tpr3], v2[:tpr3])
+                maxscore_candidate += 10 / ((dist ** 2) + (height ** 2))
+            }
+            maxscore = maxscore_candidate if maxscore_candidate > maxscore
+        }
+        $maxscore_cache[[height] + adj] = maxscore
+    end
+
+    tbl.each {|v| v[:score] = v[:score] / maxscore }
+
+    # Return the sorted sequence
+    tbl.sort {|x, y|
         if y[:score] == x[:score] then
             # sort by the distance from center (lower distance first)
             dist_x = distance_between_tpr3(x[:tpr3], center_tpr3)
@@ -161,8 +200,7 @@ def tpr3_reordered_generator(adj = [0, 0, 0, 0], center_tpr3 = 0, dir = nil)
             # sort by score (higher score first)
             y[:score] <=> x[:score]
         end
-    }
-    tbl.to_enum
+    }.to_enum
 end
 
 # Scans the directory for 'job' description files. Each job is actually
