@@ -274,7 +274,7 @@ dirlist.each {|a|
     end
     $number_of_lanes = $1.to_i / 8
 
-    printf("<h2><b>%s</b></h2>\n",
+    printf("<p><h2><b>%s</b></h2>\n",
            (read_file(a[0], "_description.txt") or "Unknown device"))
 
     printf("<table border=1 style='border-collapse: collapse;")
