@@ -19,6 +19,8 @@
 raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
 
 require_relative 'a10-tpr3-common.rb'
+require "erb"
+include ERB::Util
 
 $notitle = false
 $dirname = nil
@@ -178,7 +180,12 @@ def parse_subtest_dir(dir, adj)
             end
             memtester_log = memtester_logs[tpr3]
             color = get_nice_color(dir, tpr3, data, memtester_log)
-            html_report << sprintf("<td bgcolor=%s title='%s'>%s", color, data + "\n" + memtester_log, tpr3_print_name[tpr3])
+            escaped_memtester_log = html_escape(memtester_log)
+            escaped_memtester_log.gsub!(/\'/, "&#39;")
+            escaped_memtester_log.gsub!(/\"/, "&#34;")
+            html_report << sprintf("<td bgcolor=%s title='%s'>%s",
+                                   color, data + "\n" + escaped_memtester_log,
+                                   tpr3_print_name[tpr3])
         }
     }
     html_report << sprintf("</table>\n")
