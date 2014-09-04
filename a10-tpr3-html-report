@@ -20,11 +20,24 @@ raise "Please upgrade ruby to at least version 1.9" if RUBY_VERSION =~ /^1\.8/
 
 require_relative 'a10-tpr3-common.rb'
 
-if not ARGV[0] or not File.directory?(ARGV[0]) then
-    printf("Usage: #{$PROGRAM_NAME} [results_directory] > report.html\n")
+$notitle = false
+$dirname = nil
+
+ARGV.each {|arg|
+    if arg =~ /\-\-notitle/ then
+        $notitle = true
+    elsif File.directory?(arg) then
+        $dirname = arg
+    end
+}
+
+if not $dirname then
+    printf("Usage: #{$PROGRAM_NAME} [options] results_directory > report.html\n")
     printf("\n")
     printf("Where:\n")
-    printf("    results_directory - is the directory populated by\n")
+    printf("    --notitle         - an option to just generate tables and omit\n")
+    printf("                        the title header with links and explanations\n")
+    printf("    results_directory - is the name of the directory populated by\n")
     printf("                        the 'a10-tpr3-scan' script\n")
     printf("    report.html       - is the output of this script\n")
     exit(1)
@@ -220,10 +233,10 @@ this is not a reliable fact, but just a guess).
 This indicates that data corruption has been detected in the corresponding byte lane(s).
 </ul>
 </p>
-"
+" if not $notitle
 
 dirlist = []
-Dir.glob(File.join(ARGV[0], "*")).each {|f|
+Dir.glob(File.join($dirname, "*")).each {|f|
     next if not File.directory?(f)
     dirlist.push(f)
 }
