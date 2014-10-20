@@ -120,14 +120,29 @@ default_tpr3 = $1.to_i(16)
 
 # Add the dcdc3 voltage information to the memtester log
 a10_meminfo_log = "dcdc3_vol         = %d\n" % (dcdc3_vol or 0) + a10_meminfo_log
-# Calculate CRC32 with dram_tpr3 information filtered out
-a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log.gsub(
-                                    /(dram_tpr3\s+=\s+0x\d+)/, ""))
+# Filter out the 'dram_tpr3' information
+a10_meminfo_log_filtered = a10_meminfo_log.gsub(/(dram_tpr3\s+=\s+0x\h+)/, "")
+# Filter out the uncalibrated 'dram_zq' information
+a10_meminfo_log_filtered.gsub!(/(dram_zq\s+=\s+)0x\h+\s+\((0x\h+)\)/, "\\1\\2")
+# Calculate CRC32 from the filtered log
+a10_meminfo_log_crc32 = Zlib::crc32(a10_meminfo_log_filtered)
+
+if not a10_meminfo_log_filtered =~ /dram_zq\s*=\s*(\S+)/ then
+    raise("Error: bad dram_zq from a10-meminfo")
+end
+dram_zq = $1
+
+if not a10_meminfo_log_filtered =~ /dram_emr1\s*=\s*(\S+)/ then
+    raise("Error: bad dram_emr1 from a10-meminfo")
+end
+dram_emr1 = $1
 
 $subtest_directory = File.join($root_directory,
                                hostname + "-" + hardware_id + "-" +
                                dram_freq + "MHz-" +
                                "%.3fV-" % (dcdc3_vol.to_f / 1000) +
+                               dram_emr1 + "-" +
+                               dram_zq + "-" +
                                sprintf("%08X", a10_meminfo_log_crc32))
 
 # Ensure that a subdirectory exists for this configuration

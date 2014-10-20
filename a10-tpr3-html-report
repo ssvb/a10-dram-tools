@@ -255,7 +255,7 @@ end
 # Group results from the same device/configuration/description
 tmp = {}
 dirlist.sort.each {|f|
-    if File.basename(f) =~ /(.*MHz\-\d+\.\d+V-[0-9A-F]{8})/ then
+    if File.basename(f) =~ /(.*MHz\-\d+\.\d+V-[0-9a-fA-FxX\-]+)/ then
         id = $1
         id = (read_file(f, "_description.txt") or "") + " : " + id
         tmp[id] = [] if not tmp.has_key?(id)
