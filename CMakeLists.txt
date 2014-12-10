@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 
-project(a10-dram-tools)
+project(a10-dram-tools C)
 find_package(Threads REQUIRED)
 set(CMAKE_C_FLAGS "-O2")
 
