@@ -16,31 +16,197 @@
 
 ###############################################################################
 
+def tRFC_ns(density)
+    return 350.0 if not density
+    return { 512 =>  90.0, 1024 => 110.0, 2048 => 160.0,
+            4096 => 300.0, 8192 => 350.0}[density]
+end
+
+###############################################################################
+# JEDEC speed bin DDR3-800E
+###############################################################################
+
+def derive_from_JEDEC_DDR3_800_6_6_6(extra_info)
+    density   = extra_info[:density]
+    page_size = extra_info[:page_size]
+
+    def tFAW_ns(page_size) return {1024 => 40.0, 2048 => 50.0}[page_size] end
+    def tRRD_ns(page_size) return {1024 => 10.0, 2048 => 10.0}[page_size] end
+
+    timings_info = {
+                 #   tCK  CL  CWL
+        :tCK =>  [[  2.5,  6,  5]], # 300MHz - 400MHz
+
+        :tXS      => {:ns => tRFC_ns(density) + 10.0},
+        :tRCD     => {:ns => 15.0},
+        :tRP      => {:ns => 15.0},
+        :tRC      => {:ns => 52.5},
+        :tRAS     => {:ns => 37.5},
+        :tFAW     => {:ns => tFAW_ns(page_size)},
+        :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
+        :tCKE     => {:ck => 3, :ns => 7.5},
+        :tWTR     => {:ck => 4, :ns => 7.5},
+        :tXP      => {:ck => 3, :ns => 7.5},
+        :tXPDLL   => {:ck => 10, :ns => 24.0},
+        :tMRD     => {:ck => 4},
+        :tRTP     => {:ck => 4, :ns => 7.5},
+        :tWR      => {:ns => 15.0},
+        :tDLLK    => {:ck => 512},
+        :tMOD     => {:ck => 12, :ns => 15.0},
+        :tRFC     => {:ns => tRFC_ns(density)},
+        :tCCD     => {:ck => 4},
+        :density  => density,
+    }
+    # And override some of the timings by the externally provided data
+    extra_info.each {|k, v| timings_info[k] = v }
+    return timings_info
+end
+
+###############################################################################
+# JEDEC speed bin DDR3-1066F
+###############################################################################
+
+def derive_from_JEDEC_DDR3_1066_7_7_7(extra_info)
+    density   = extra_info[:density]
+    page_size = extra_info[:page_size]
+
+    def tFAW_ns(page_size) return {1024 => 37.5, 2048 => 50.0}[page_size] end
+    def tRRD_ns(page_size) return {1024 =>  7.5, 2048 => 10.0}[page_size] end
+
+    timings_info = {
+                 #   tCK  CL  CWL
+        :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
+                  [1.875,  7,  6]], # 400MHz - 533MHz
+
+        :tXS      => {:ns => tRFC_ns(density) + 10.0},
+        :tRCD     => {:ns => 13.125},
+        :tRP      => {:ns => 13.125},
+        :tRC      => {:ns => 50.625},
+        :tRAS     => {:ns => 37.5},
+        :tFAW     => {:ns => tFAW_ns(page_size)},
+        :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
+        :tCKE     => {:ck => 3, :ns => 5.625},
+        :tWTR     => {:ck => 4, :ns => 7.5},
+        :tXP      => {:ck => 3, :ns => 7.5},
+        :tXPDLL   => {:ck => 10, :ns => 24.0},
+        :tMRD     => {:ck => 4},
+        :tRTP     => {:ck => 4, :ns => 7.5},
+        :tWR      => {:ns => 15.0},
+        :tDLLK    => {:ck => 512},
+        :tMOD     => {:ck => 12, :ns => 15.0},
+        :tRFC     => {:ns => tRFC_ns(density)},
+        :tCCD     => {:ck => 4},
+        :density  => density,
+    }
+    # And override some of the timings by the externally provided data
+    extra_info.each {|k, v| timings_info[k] = v }
+    return timings_info
+end
+
+###############################################################################
+# JEDEC speed bin DDR3-1066G
+###############################################################################
+
+def derive_from_JEDEC_DDR3_1066_8_8_8(extra_info)
+    density   = extra_info[:density]
+    page_size = extra_info[:page_size]
+
+    def tFAW_ns(page_size) return {1024 => 37.5, 2048 => 50.0}[page_size] end
+    def tRRD_ns(page_size) return {1024 =>  7.5, 2048 => 10.0}[page_size] end
+
+    timings_info = {
+                 #   tCK  CL  CWL
+        :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
+                  [1.875,  8,  6]], # 400MHz - 533MHz
+
+        :tXS      => {:ns => tRFC_ns(density) + 10.0},
+        :tRCD     => {:ns => 15.0},
+        :tRP      => {:ns => 15.0},
+        :tRC      => {:ns => 52.5},
+        :tRAS     => {:ns => 37.5},
+        :tFAW     => {:ns => tFAW_ns(page_size)},
+        :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
+        :tCKE     => {:ck => 3, :ns => 5.625},
+        :tWTR     => {:ck => 4, :ns => 7.5},
+        :tXP      => {:ck => 3, :ns => 7.5},
+        :tXPDLL   => {:ck => 10, :ns => 24.0},
+        :tMRD     => {:ck => 4},
+        :tRTP     => {:ck => 4, :ns => 7.5},
+        :tWR      => {:ns => 15.0},
+        :tDLLK    => {:ck => 512},
+        :tMOD     => {:ck => 12, :ns => 15.0},
+        :tRFC     => {:ns => tRFC_ns(density)},
+        :tCCD     => {:ck => 4},
+        :density  => density,
+    }
+    # And override some of the timings by the externally provided data
+    extra_info.each {|k, v| timings_info[k] = v }
+    return timings_info
+end
+
+###############################################################################
+# JEDEC speed bin DDR3-1333H
+###############################################################################
+
 def derive_from_JEDEC_DDR3_1333_9_9_9(extra_info)
     density   = extra_info[:density]
     page_size = extra_info[:page_size]
 
-    def tRFC_ns(density)
-        return 350.0 if not density
-        return { 512 =>  90.0, 1024 => 110.0, 2048 => 160.0,
-                4096 => 300.0, 8192 => 350.0}[density]
-    end
     def tFAW_ns(page_size) return {1024 => 30.0, 2048 => 45.0}[page_size] end
     def tRRD_ns(page_size) return {1024 =>  6.0, 2048 =>  7.5}[page_size] end
 
-    # Fill in the JEDEC timings for the Speed Bin 1333H (DDR3 1333 9-9-9)
-    # Except that use CL=7 (instead of CL=8) for the 400MHz - 533MHz range
-    # because this seems to be what real DRAM chips support
     timings_info = {
                  #   tCK  CL  CWL
         :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
-                  [1.875,  7,  6],  # 400MHz - 533MHz
+                  [1.875,  8,  6],  # 400MHz - 533MHz
                   [  1.5,  9,  7]], # 533MHz - 667MHz
 
         :tXS      => {:ns => tRFC_ns(density) + 10.0},
         :tRCD     => {:ns => 13.5},
         :tRP      => {:ns => 13.5},
         :tRC      => {:ns => 49.5},
+        :tRAS     => {:ns => 36.0},
+        :tFAW     => {:ns => tFAW_ns(page_size)},
+        :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
+        :tCKE     => {:ck => 3, :ns => 5.625},
+        :tWTR     => {:ck => 4, :ns => 7.5},
+        :tXP      => {:ck => 3, :ns => 6.0},
+        :tXPDLL   => {:ck => 10, :ns => 24.0},
+        :tMRD     => {:ck => 4},
+        :tRTP     => {:ck => 4, :ns => 7.5},
+        :tWR      => {:ns => 15.0},
+        :tDLLK    => {:ck => 512},
+        :tMOD     => {:ck => 12, :ns => 15.0},
+        :tRFC     => {:ns => tRFC_ns(density)},
+        :tCCD     => {:ck => 4},
+        :density  => density,
+    }
+    # And override some of the timings by the externally provided data
+    extra_info.each {|k, v| timings_info[k] = v }
+    return timings_info
+end
+
+###############################################################################
+# JEDEC speed bin DDR3-1333J
+###############################################################################
+
+def derive_from_JEDEC_DDR3_1333_10_10_10(extra_info)
+    density   = extra_info[:density]
+    page_size = extra_info[:page_size]
+
+    def tFAW_ns(page_size) return {1024 => 30.0, 2048 => 45.0}[page_size] end
+    def tRRD_ns(page_size) return {1024 =>  6.0, 2048 =>  7.5}[page_size] end
+
+    timings_info = {
+                 #   tCK  CL  CWL
+        :tCK =>  [[  2.5,  6,  5],  # 300MHz - 400MHz
+                  [1.875,  8,  6],  # 400MHz - 533MHz
+                  [  1.5, 10,  7]], # 533MHz - 667MHz
+
+        :tXS      => {:ns => tRFC_ns(density) + 10.0},
+        :tRCD     => {:ns => 15.0},
+        :tRP      => {:ns => 15.0},
+        :tRC      => {:ns => 51.0},
         :tRAS     => {:ns => 36.0},
         :tFAW     => {:ns => tFAW_ns(page_size)},
         :tRRD     => {:ck => 4, :ns => tRRD_ns(page_size)},
