@@ -191,14 +191,24 @@ def tpr3_reordered_generator(adj = [0, 0, 0, 0], center_tpr3 = 0, dir = nil, hei
 
     # Return the sorted sequence
     tbl.sort {|x, y|
-        if y[:score] == x[:score] then
-            # sort by the distance from center (lower distance first)
-            dist_x = distance_between_tpr3(x[:tpr3], center_tpr3)
-            dist_y = distance_between_tpr3(y[:tpr3], center_tpr3)
-            dist_x <=> dist_y
+        dist_x = distance_between_tpr3(x[:tpr3], center_tpr3)
+        dist_y = distance_between_tpr3(y[:tpr3], center_tpr3)
+        if dist_x < 1.5 || dist_y < 1.5 then
+            # first of all, prefer the neighbours of 'center_tpr3'
+            if dist_x == dist_y then
+                y[:score] <=> x[:score]
+            else
+                # sort by the distance from center (lower distance first)
+                dist_x <=> dist_y
+            end
         else
-            # sort by score (higher score first)
-            y[:score] <=> x[:score]
+            if y[:score] == x[:score] then
+                # sort by the distance from center (lower distance first)
+                dist_x <=> dist_y
+            else
+                # sort by score (higher score first)
+                y[:score] <=> x[:score]
+            end
         end
     }.to_enum
 end
